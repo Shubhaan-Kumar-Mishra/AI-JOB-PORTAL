@@ -1,16 +1,54 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { UserPlus, Mail, Lock, User, Sparkles, ArrowRight } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { UserPlus, Mail, Lock, User, ArrowRight, AlertCircle, Loader2, Check } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export const RegisterPage: React.FC = () => {
-  const [fullName, setFullName] = useState('');
+  const navigate = useNavigate();
+  const { register } = useAuth();
+
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'seeker' | 'employer'>('seeker');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Password Validation Rules
+  const hasMinLength = password.length >= 8;
+  const hasUppercase = /[A-Z]/.test(password);
+  const hasLowercase = /[a-z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const passwordsMatch = password && password === confirmPassword;
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert('User registration integration will be added in Stage 2.');
+    setErrorMsg(null);
+
+    if (!name || !email || !password || !confirmPassword) {
+      setErrorMsg('Please fill in all required fields.');
+      return;
+    }
+
+    if (!passwordsMatch) {
+      setErrorMsg('Passwords do not match.');
+      return;
+    }
+
+    if (!hasMinLength || !hasUppercase || !hasLowercase || !hasNumber) {
+      setErrorMsg('Password does not meet requirements (8+ chars, 1 uppercase, 1 lowercase, 1 number).');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await register(name, email, password);
+      navigate('/dashboard', { replace: true });
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Registration failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -24,6 +62,13 @@ export const RegisterPage: React.FC = () => {
           <p className="text-sm text-slate-400 mt-1">Start matching jobs with Gemini AI</p>
         </div>
 
+        {errorMsg && (
+          <div className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-start gap-3 text-rose-300 text-xs leading-relaxed">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
@@ -33,8 +78,8 @@ export const RegisterPage: React.FC = () => {
               <User className="w-5 h-5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 placeholder="Alex Mercer"
                 required
                 className="w-full pl-11 pr-4 py-2.5 bg-slate-900/90 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 text-sm transition-colors"
@@ -69,48 +114,69 @@ export const RegisterPage: React.FC = () => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimum 8 characters"
+                placeholder="••••••••"
                 required
                 className="w-full pl-11 pr-4 py-2.5 bg-slate-900/90 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 text-sm transition-colors"
               />
             </div>
+
+            {/* Password strength checklist */}
+            {password && (
+              <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px]">
+                <span className={`flex items-center gap-1 ${hasMinLength ? 'text-emerald-400' : 'text-slate-500'}`}>
+                  <Check className="w-3 h-3" /> 8+ Characters
+                </span>
+                <span className={`flex items-center gap-1 ${hasUppercase ? 'text-emerald-400' : 'text-slate-500'}`}>
+                  <Check className="w-3 h-3" /> 1 Uppercase (A-Z)
+                </span>
+                <span className={`flex items-center gap-1 ${hasLowercase ? 'text-emerald-400' : 'text-slate-500'}`}>
+                  <Check className="w-3 h-3" /> 1 Lowercase (a-z)
+                </span>
+                <span className={`flex items-center gap-1 ${hasNumber ? 'text-emerald-400' : 'text-slate-500'}`}>
+                  <Check className="w-3 h-3" /> 1 Number (0-9)
+                </span>
+              </div>
+            )}
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-              I am joining as
+              Confirm Password
             </label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setRole('seeker')}
-                className={`py-2 rounded-xl text-xs font-semibold border transition-all ${
-                  role === 'seeker'
-                    ? 'bg-brand-600/20 border-brand-500 text-brand-300'
-                    : 'bg-slate-900 border-slate-800 text-slate-400'
+            <div className="relative">
+              <Lock className="w-5 h-5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                className={`w-full pl-11 pr-4 py-2.5 bg-slate-900/90 border rounded-xl text-white placeholder-slate-500 focus:outline-none text-sm transition-colors ${
+                  confirmPassword && !passwordsMatch
+                    ? 'border-rose-500/80 focus:border-rose-500'
+                    : 'border-slate-800 focus:border-brand-500'
                 }`}
-              >
-                Job Seeker
-              </button>
-              <button
-                type="button"
-                onClick={() => setRole('employer')}
-                className={`py-2 rounded-xl text-xs font-semibold border transition-all ${
-                  role === 'employer'
-                    ? 'bg-brand-600/20 border-brand-500 text-brand-300'
-                    : 'bg-slate-900 border-slate-800 text-slate-400'
-                }`}
-              >
-                Recruiter
-              </button>
+              />
             </div>
+            {confirmPassword && !passwordsMatch && (
+              <span className="text-[11px] text-rose-400 mt-1 block">Passwords do not match</span>
+            )}
           </div>
 
           <button
             type="submit"
-            className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-brand-600 to-accent-600 hover:from-brand-500 hover:to-accent-500 text-white font-semibold text-sm shadow-lg shadow-brand-500/25 transition-all flex items-center justify-center gap-2 hover:scale-[1.01]"
+            disabled={isSubmitting}
+            className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-brand-600 to-accent-600 hover:from-brand-500 hover:to-accent-500 text-white font-semibold text-sm shadow-lg shadow-brand-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-60 hover:scale-[1.01]"
           >
-            Create Account <ArrowRight className="w-4 h-4" />
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" /> Creating account...
+              </>
+            ) : (
+              <>
+                Create Account <ArrowRight className="w-4 h-4" />
+              </>
+            )}
           </button>
         </form>
 

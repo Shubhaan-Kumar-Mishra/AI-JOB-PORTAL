@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Briefcase, Sparkles, User, LogIn, Activity } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Briefcase, Sparkles, LogIn, UserPlus, LogOut, LayoutDashboard, Activity, User } from 'lucide-react';
 import { checkBackendHealth } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 export const Navbar: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, isAuthenticated, logout } = useAuth();
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -14,6 +17,11 @@ export const Navbar: React.FC = () => {
   }, []);
 
   const isActive = (path: string) => location.pathname === path;
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
 
   return (
     <header className="sticky top-0 z-50 glass-panel border-b border-slate-800/80">
@@ -58,7 +66,7 @@ export const Navbar: React.FC = () => {
         </nav>
 
         {/* Status & Auth Actions */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3">
           {/* API Health Badge */}
           <div
             title={apiOnline ? 'Backend API connected' : 'Connecting to API...'}
@@ -82,18 +90,41 @@ export const Navbar: React.FC = () => {
             </span>
           </div>
 
-          <Link
-            to="/login"
-            className="text-sm font-medium text-slate-300 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-800/40 transition-colors flex items-center gap-1.5"
-          >
-            <LogIn className="w-4 h-4" /> Sign In
-          </Link>
-          <Link
-            to="/register"
-            className="text-sm font-semibold text-white px-4 py-2 rounded-lg bg-gradient-to-r from-brand-600 to-accent-600 hover:from-brand-500 hover:to-accent-500 shadow-md shadow-brand-500/20 transition-all flex items-center gap-1.5 hover:scale-[1.02]"
-          >
-            <User className="w-4 h-4" /> Get Started
-          </Link>
+          {isAuthenticated && user ? (
+            <div className="flex items-center space-x-3">
+              <Link
+                to="/dashboard"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-brand-500/40 transition-all text-xs font-semibold text-white"
+              >
+                <div className="w-6 h-6 rounded-full bg-brand-600 flex items-center justify-center text-[10px] font-bold text-white uppercase">
+                  {user.name.charAt(0)}
+                </div>
+                <span className="hidden sm:inline max-w-[100px] truncate">{user.name}</span>
+              </Link>
+
+              <button
+                onClick={handleLogout}
+                className="text-xs font-semibold text-slate-300 hover:text-rose-400 px-3 py-2 rounded-lg hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all flex items-center gap-1.5"
+              >
+                <LogOut className="w-3.5 h-3.5" /> Logout
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center space-x-2">
+              <Link
+                to="/login"
+                className="text-xs font-medium text-slate-300 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-800/40 transition-colors flex items-center gap-1.5"
+              >
+                <LogIn className="w-3.5 h-3.5" /> Sign In
+              </Link>
+              <Link
+                to="/register"
+                className="text-xs font-semibold text-white px-3.5 py-2 rounded-lg bg-gradient-to-r from-brand-600 to-accent-600 hover:from-brand-500 hover:to-accent-500 shadow-md shadow-brand-500/20 transition-all flex items-center gap-1.5 hover:scale-[1.02]"
+              >
+                <UserPlus className="w-3.5 h-3.5" /> Get Started
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </header>

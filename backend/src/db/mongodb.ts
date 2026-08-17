@@ -1,12 +1,15 @@
 import mongoose from 'mongoose';
 import { config } from '../config/env.js';
 
+// Disable query buffering when disconnected so requests fail fast with helpful error messages
+mongoose.set('bufferCommands', false);
+
 /**
  * Connects to MongoDB Atlas using Mongoose.
  */
 export async function connectDB(): Promise<typeof mongoose | null> {
   if (!config.mongoUri) {
-    console.warn('⚠️ MONGODB_URI is not set in environment variables.');
+    console.warn('⚠️ MONGODB_URI is not set in environment variables. Database operations will be disabled until MONGODB_URI is configured.');
     return null;
   }
 
@@ -20,6 +23,13 @@ export async function connectDB(): Promise<typeof mongoose | null> {
     console.error('❌ MongoDB Atlas connection error:', error);
     return null;
   }
+}
+
+/**
+ * Helper to check whether database connection is active.
+ */
+export function isDBConnected(): boolean {
+  return mongoose.connection.readyState === 1;
 }
 
 /**
@@ -38,7 +48,6 @@ export async function checkDBHealth(): Promise<{
   }
 
   try {
-    // If not connected yet, attempt connection
     if (mongoose.connection.readyState !== 1) {
       await mongoose.connect(config.mongoUri, {
         serverSelectionTimeoutMS: 5000,
@@ -49,7 +58,6 @@ export async function checkDBHealth(): Promise<{
       throw new Error('Database connection instance is undefined');
     }
 
-    // Actually test connectivity by sending a ping command to MongoDB Atlas
     const pingResult = await mongoose.connection.db.admin().ping();
 
     return {
