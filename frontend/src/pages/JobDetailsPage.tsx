@@ -164,6 +164,9 @@ export const JobDetailsPage: React.FC = () => {
     }
     if (!job) return;
 
+    // Guard: prevent re-entry while a request is already running (defensive; button is also disabled)
+    if (isAnalyzing) return;
+
     if (hasResume === false) {
       setAiError('Please upload your resume first on the Resume page before analyzing your job match.');
       return;
@@ -181,12 +184,32 @@ export const JobDetailsPage: React.FC = () => {
         setAiError(res.message || 'Failed to analyze job match.');
       }
     } catch (err: any) {
-      console.error('AI Match analysis error:', err);
-      if (err.response?.data?.message?.includes('upload a resume')) {
+      const status: number | undefined = err.response?.status;
+      const serverMsg: string =
+        err.response?.data?.error?.message || err.response?.data?.message || '';
+
+      if (
+        serverMsg.toLowerCase().includes('upload a resume') ||
+        serverMsg.toLowerCase().includes('please upload a resume')
+      ) {
         setHasResume(false);
         setAiError('Please upload a resume on the Resume page before analyzing your match.');
+      } else if (status === 429) {
+        setAiError(
+          serverMsg || 'Too many AI requests. Please wait a moment before analyzing again.'
+        );
+      } else if (status === 504) {
+        setAiError('AI analysis timed out. Please try again in a moment.');
+      } else if (status === 502) {
+        setAiError('AI service returned an unexpected response format. Please try again.');
+      } else if (status === 500) {
+        setAiError('AI service is currently unavailable. Please try again later.');
+      } else if (status === 404) {
+        setAiError('Job position not found. It may have been removed from Adzuna.');
+      } else if (err.code === 'ECONNABORTED' || err.message?.toLowerCase().includes('timeout')) {
+        setAiError('Request timed out. Please check your connection and try again.');
       } else {
-        setAiError(err.response?.data?.error?.message || 'Gemini AI service unavailable. Please try again.');
+        setAiError(serverMsg || 'Gemini AI analysis failed. Please try again.');
       }
     } finally {
       setIsAnalyzing(false);

@@ -1,12 +1,27 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { analyzeJobMatchHandler } from '../controllers/aiController.js';
+import { createRateLimiter } from '../middleware/rateLimiter.js';
 
 export const aiRouter = Router();
 
 /**
- * @route   POST /api/ai/job-match/:jobId
- * @desc    Analyze match score and compatibility between candidate resume and job position
- * @access  Protected
+ * Per-user AI rate limiter.
+ *
+ * Limits each user to 10 AI analysis requests per 15-minute sliding window.
+ * Suitable for local development. In production, replace with a distributed
+ * rate-limiting solution (e.g., Redis-backed) to coordinate across server instances.
  */
-aiRouter.post('/job-match/:jobId', authMiddleware, analyzeJobMatchHandler);
+const aiRateLimiter = createRateLimiter({
+  max: 10,
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  message:
+    'Too many AI analysis requests. You may make up to 10 requests per 15 minutes. Please wait and try again.',
+});
+
+/**
+ * @route   POST /api/ai/job-match/:jobId
+ * @desc    Analyze AI compatibility match between candidate resume and job listing
+ * @access  Protected (JWT)
+ */
+aiRouter.post('/job-match/:jobId', authMiddleware, aiRateLimiter, analyzeJobMatchHandler);

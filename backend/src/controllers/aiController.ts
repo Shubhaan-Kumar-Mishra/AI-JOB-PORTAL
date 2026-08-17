@@ -6,11 +6,22 @@ import {
   analyzeResumeJobMatch,
   ControlledJobPayload,
   ControlledResumePayload,
+  GeminiAuthError,
+  GeminiRateLimitError,
+  GeminiModelError,
+  GeminiValidationError,
+  GeminiTimeoutError,
 } from '../services/gemini.service.js';
 
 /**
  * POST /api/ai/job-match/:jobId
- * Protected endpoint to perform AI compatibility analysis between current candidate's resume and specified job position.
+ * Protected endpoint: AI compatibility analysis between candidate resume and a specific job position.
+ *
+ * Security properties:
+ * - userId derived exclusively from JWT (req.user.id) — never from request body or params.
+ * - Job data is fetched by the backend from the Adzuna service — frontend supplies only jobId.
+ * - Resume data is fetched by the backend from MongoDB using the authenticated userId.
+ * - Response contains only job summary and AI analysis — never API keys, prompts, or raw resume text.
  */
 export async function analyzeJobMatchHandler(
   req: AuthenticatedRequest,
@@ -18,42 +29,55 @@ export async function analyzeJobMatchHandler(
   next: NextFunction
 ): Promise<void> {
   try {
-    const userId = req.user?.id || req.user?._id;
+    // ── Identity entirely from JWT ─────────────────────────────────────────────
+    const userId: string | undefined = req.user?.id || req.user?._id;
     if (!userId) {
-      res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      res.status(401).json({
+        success: false,
+        error: { message: 'Authentication required to perform AI job match analysis.' },
+      });
       return;
     }
 
+    // ── Job ID validation ──────────────────────────────────────────────────────
     const { jobId } = req.params;
-    if (!jobId) {
-      res.status(400).json({ success: false, error: { message: 'Job ID parameter is required' } });
+    if (!jobId || typeof jobId !== 'string' || jobId.trim() === '') {
+      res.status(400).json({
+        success: false,
+        error: { message: 'A valid job ID parameter is required.' },
+      });
       return;
     }
 
-    // 1. Check whether candidate has uploaded a resume in Stage 5
+    // ── Resume ownership: fetch by authenticated userId only ───────────────────
+    // The authenticated user can never specify or override which resume is used.
+    // resumeId from request body/query is intentionally NOT accepted.
     const resumeDoc = await Resume.findOne({ userId }).lean();
     if (!resumeDoc || !resumeDoc.parsedData) {
       res.status(400).json({
         success: false,
         message: 'Please upload a resume before analyzing your job match.',
-        error: { message: 'No resume document found for your profile. Please upload a PDF or DOCX resume on the Resume page first.' },
+        error: {
+          message:
+            'No resume document found for your profile. Please upload a PDF or DOCX resume on the Resume page first.',
+        },
       });
       return;
     }
 
-    // 2. Fetch target job listing details from Adzuna service
+    // ── Job data: fetched by backend from Adzuna — NOT from frontend ───────────
     let jobDetail;
     try {
-      jobDetail = await fetchAdzunaJobById(jobId);
-    } catch (err: any) {
+      jobDetail = await fetchAdzunaJobById(jobId.trim());
+    } catch {
       res.status(404).json({
         success: false,
-        error: { message: `Target job position (${jobId}) could not be retrieved from Adzuna API.` },
+        error: { message: `Job position '${jobId}' could not be retrieved. It may have expired or been removed.` },
       });
       return;
     }
 
-    // 3. Construct sanitized controlled job payload (no credentials or tokens)
+    // ── Construct sanitized controlled job payload ──────────────────────────────
     const controlledJob: ControlledJobPayload = {
       id: jobDetail.id,
       title: jobDetail.title,
@@ -65,7 +89,9 @@ export async function analyzeJobMatchHandler(
       contractTime: jobDetail.contractTime || null,
     };
 
-    // 4. Construct sanitized controlled resume payload
+    // ── Construct sanitized controlled resume payload ───────────────────────────
+    // Only job-relevant structured fields are passed — no passwords, JWT, MongoDB URI,
+    // API keys, phone numbers, emails, raw resume text, or sensitive personal data.
     const parsed = resumeDoc.parsedData;
     const controlledResume: ControlledResumePayload = {
       summary: parsed.summary || null,
@@ -91,9 +117,11 @@ export async function analyzeJobMatchHandler(
       })),
     };
 
-    // 5. Invoke Gemini AI Service
-    const analysis = await analyzeResumeJobMatch(controlledResume, controlledJob);
+    // ── Invoke Gemini AI service with userId for dedup lock ────────────────────
+    const analysis = await analyzeResumeJobMatch(controlledResume, controlledJob, userId);
 
+    // ── Controlled response: only job summary + AI analysis ───────────────────
+    // Never includes: API keys, prompts, MongoDB data, raw resume text, or server internals.
     res.status(200).json({
       success: true,
       data: {
@@ -106,13 +134,58 @@ export async function analyzeJobMatchHandler(
       },
     });
   } catch (error: any) {
-    if (error.message?.includes('Gemini API key')) {
+    // ── Granular Gemini error → HTTP status mapping ────────────────────────────
+    if (error instanceof GeminiAuthError) {
       res.status(500).json({
         success: false,
-        error: { message: 'Gemini AI service is not properly configured on server.' },
+        error: { message: 'AI service configuration error. Please contact support.' },
       });
       return;
     }
+
+    if (error instanceof GeminiRateLimitError) {
+      res.status(429).json({
+        success: false,
+        error: { message: 'AI service is temporarily busy. Please wait a moment and try again.' },
+      });
+      return;
+    }
+
+    if (error instanceof GeminiModelError) {
+      res.status(500).json({
+        success: false,
+        error: { message: 'AI service model configuration error. Please contact support.' },
+      });
+      return;
+    }
+
+    if (error instanceof GeminiValidationError) {
+      res.status(502).json({
+        success: false,
+        error: { message: 'AI service returned an unexpected response format. Please try again.' },
+      });
+      return;
+    }
+
+    if (error instanceof GeminiTimeoutError) {
+      res.status(504).json({
+        success: false,
+        error: { message: 'AI analysis timed out. Please try again.' },
+      });
+      return;
+    }
+
+    // Duplicate / in-progress request
+    if (error?.statusCode === 429 || error?.message?.includes('already in progress')) {
+      res.status(429).json({
+        success: false,
+        error: { message: error.message || 'A request for this job is already being processed.' },
+      });
+      return;
+    }
+
+    // Unknown errors: delegate to centralized error handler
+    // Stack trace is never exposed to client — error handler only emits a generic 500 message.
     next(error);
   }
 }
