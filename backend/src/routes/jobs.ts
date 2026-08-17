@@ -1,10 +1,18 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
+import { searchJobs, getJobById } from '../controllers/jobsController.js';
 
 export const jobsRouter = Router();
 
-jobsRouter.get('/status', (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    message: 'Jobs search & recommendation service initialized (Node.js + Express Foundation Stage)',
-  });
-});
+/**
+ * @route   GET /api/jobs/search
+ * @desc    Search jobs dynamically via Adzuna API
+ * @access  Public
+ */
+jobsRouter.get('/search', searchJobs);
+
+/**
+ * @route   GET /api/jobs/:id
+ * @desc    Get detailed information for a specific job
+ * @access  Public
+ */
+jobsRouter.get('/:id', getJobById);

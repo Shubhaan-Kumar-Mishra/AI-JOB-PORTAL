@@ -37,6 +37,59 @@ export interface AuthResponse {
   };
 }
 
+export interface StandardJob {
+  id: string;
+  title: string;
+  company: {
+    name: string;
+  };
+  location: {
+    displayName: string;
+    area?: string[];
+  };
+  description: string;
+  salary: {
+    min: number | null;
+    max: number | null;
+    isPredicted: boolean;
+  };
+  url: string;
+  created: string;
+  contractType: string | null;
+  contractTime: string | null;
+  category: string;
+}
+
+export interface StandardJobSearchResponse {
+  success: boolean;
+  data: {
+    jobs: StandardJob[];
+    pagination: {
+      page: number;
+      resultsPerPage: number;
+      total: number;
+      totalPages: number;
+    };
+    country: string;
+    attribution: string;
+  };
+  error?: {
+    message: string;
+  };
+}
+
+export interface JobSearchParams {
+  keyword?: string;
+  location?: string;
+  page?: number;
+  resultsPerPage?: number;
+  sortBy?: 'relevance' | 'date' | 'salary';
+  salaryMin?: number;
+  salaryMax?: number;
+  fullTime?: boolean;
+  permanent?: boolean;
+}
+
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
@@ -106,5 +159,28 @@ export async function updateProfileApi(data: {
 
 export async function logoutApi(): Promise<AuthResponse> {
   const response = await api.post<AuthResponse>('/auth/logout');
+  return response.data;
+}
+
+// Job Search API Methods
+export async function searchJobsApi(params: JobSearchParams): Promise<StandardJobSearchResponse> {
+  const response = await api.get<StandardJobSearchResponse>('/jobs/search', {
+    params: {
+      keyword: params.keyword || undefined,
+      location: params.location || undefined,
+      page: params.page || 1,
+      resultsPerPage: params.resultsPerPage || 20,
+      sortBy: params.sortBy || 'relevance',
+      salaryMin: params.salaryMin || undefined,
+      salaryMax: params.salaryMax || undefined,
+      fullTime: params.fullTime ? '1' : undefined,
+      permanent: params.permanent ? '1' : undefined,
+    },
+  });
+  return response.data;
+}
+
+export async function getJobDetailsApi(id: string): Promise<{ success: boolean; data: { job: StandardJob; attribution: string } }> {
+  const response = await api.get(`/jobs/${id}`);
   return response.data;
 }

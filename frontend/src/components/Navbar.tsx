@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Briefcase, Sparkles, LogIn, UserPlus, LogOut, LayoutDashboard, Activity, User } from 'lucide-react';
+import { Briefcase, Sparkles, LogIn, UserPlus, LogOut, Search, Activity } from 'lucide-react';
 import { checkBackendHealth } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -52,6 +52,16 @@ export const Navbar: React.FC = () => {
             }`}
           >
             Home
+          </Link>
+          <Link
+            to="/jobs"
+            className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+              isActive('/jobs')
+                ? 'text-white bg-slate-800/60'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800/40'
+            }`}
+          >
+            <Search className="w-4 h-4 text-brand-400" /> Browse Jobs
           </Link>
           <Link
             to="/dashboard"

@@ -19,11 +19,11 @@ A production-quality full-stack AI-powered job application platform built for lo
 - **Language**: TypeScript
 - **Dev Runner**: `tsx` (TypeScript Execution Engine)
 
-### **Database & Services**
+### **Database & External Services**
 - **Database**: MongoDB Atlas (via Mongoose)
-- **Job Search API**: Adzuna API
-- **AI Engine**: Google Gemini API
-- **Email Service**: Resend API
+- **Job Search Provider**: Adzuna API (India Market `in`)
+- **AI Engine**: Google Gemini API (Stage 5)
+- **Email Service**: Resend API (Stage 7)
 
 ---
 
@@ -44,18 +44,31 @@ ai-job-portal/
 │       ├── config/
 │       │   └── env.ts        # Environment variable loader (dotenv)
 │       ├── db/
-│       │   └── mongodb.ts    # MongoDB Atlas Mongoose connection & health check service
+│       │   └── mongodb.ts    # MongoDB Atlas Mongoose connection
 │       ├── middleware/
-│       │   └── error-handler.ts # Express error handler middleware
+│       │   ├── authMiddleware.ts       # JWT authentication guard
+│       │   ├── dbCheckMiddleware.ts    # Database connection verification
+│       │   ├── validationMiddleware.ts # Zod request validation wrapper
+│       │   └── error-handler.ts        # Express error handler middleware
+│       ├── models/
+│       │   └── User.ts       # Mongoose User schema & bcrypt logic
+│       ├── services/
+│       │   └── adzuna.service.ts # Adzuna REST API service & payload normalizer
+│       ├── validators/
+│       │   ├── authValidators.ts # Auth validation schemas
+│       │   └── jobValidators.ts  # Job search query validation schemas
+│       ├── controllers/
+│       │   ├── authController.ts # User auth & profile endpoints
+│       │   └── jobsController.ts # Adzuna job search & detail endpoints
 │       └── routes/
-│           ├── health.ts     # Health endpoints (/api/health and /api/health/db)
-│           ├── auth.ts       # Auth route placeholder
-│           ├── jobs.ts       # Job search route placeholder
+│           ├── health.ts     # Health endpoints (/api/health & /api/health/db)
+│           ├── auth.ts       # User authentication routes
+│           ├── jobs.ts       # Job search routes (/api/jobs/search & /api/jobs/:id)
 │           └── resume.ts     # AI resume analysis placeholder
 └── frontend/
     ├── package.json          # React frontend dependencies
     ├── tsconfig.json         # React TypeScript configuration
-    ├── vite.config.ts        # Vite configuration & dev API proxy (-> http://localhost:5000)
+    ├── vite.config.ts        # Vite configuration & dev API proxy (-> http://localhost:5001)
     ├── tailwind.config.js    # Design system tokens & colors
     ├── postcss.config.js     # PostCSS configuration
     ├── index.html            # Entry HTML with Inter typography & metadata
@@ -63,17 +76,22 @@ ai-job-portal/
         ├── main.tsx          # React DOM root mounting
         ├── App.tsx           # Router configuration
         ├── index.css         # Tailwind directives & glassmorphism utilities
+        ├── context/
+        │   └── AuthContext.tsx # User session & token state context
         ├── services/
-        │   └── api.ts        # Axios API client & health check service
+        │   └── api.ts        # Axios API client & job search service methods
         ├── components/
-        │   ├── Navbar.tsx    # Header with API status indicator
+        │   ├── ProtectedRoute.tsx # Auth route guard
+        │   ├── Navbar.tsx    # Header with navigation & session controls
         │   ├── Footer.tsx    # Footer with architecture tags
         │   └── Layout.tsx    # Responsive page layout wrapper
         └── pages/
             ├── LandingPage.tsx   # Hero section & feature preview
-            ├── LoginPage.tsx     # Modern login interface placeholder
-            ├── RegisterPage.tsx  # User registration placeholder
-            └── DashboardPage.tsx # Candidate dashboard & tracking tabs
+            ├── LoginPage.tsx     # Functional login form
+            ├── RegisterPage.tsx  # Functional registration form
+            ├── DashboardPage.tsx # Candidate dashboard & profile editor
+            ├── JobSearchPage.tsx # Real-time Adzuna job search UI & filters
+            └── JobDetailsPage.tsx# Job details & external application redirect
 ```
 
 ---
@@ -87,64 +105,90 @@ cp .env.example .env
 cp .env.example backend/.env
 ```
 
-| Variable | Description |
-|---|---|
-| `PORT` | Local Express Server Port (Default: `5000`) |
-| `MONGODB_URI` | MongoDB Atlas Connection String (`mongodb+srv://...`) |
-| `JWT_SECRET` | Secret key for JWT token signing |
-| `ADZUNA_APP_ID` | Adzuna Jobs API Application ID |
-| `ADZUNA_APP_KEY` | Adzuna Jobs API Application Key |
-| `GEMINI_API_KEY` | Google Gemini AI API Key |
-| `RESEND_API_KEY` | Resend Email API Key |
+| Variable | Required | Description |
+|---|---|---|
+| `PORT` | Optional | Local Express Server Port (Default: `5001`) |
+| `MONGODB_URI` | Required | MongoDB Atlas Connection String (`mongodb+srv://...`) |
+| `JWT_SECRET` | Required | Secret key for JWT token signing |
+| `ADZUNA_APP_ID` | Required | Adzuna Developer Application ID |
+| `ADZUNA_APP_KEY` | Required | Adzuna Developer Application Key |
 
 ---
 
-## 🛠️ Local Setup & Quick Start
+## 📡 Adzuna Job Search API Documentation
 
-### **1. Install Dependencies**
-```bash
-npm install
-```
+### **1. Search Jobs (`GET /api/jobs/search`)**
+- **Access**: Public
+- **Query Parameters**:
+  - `keyword` (string): Search query for job title/skills (e.g. `developer`).
+  - `location` (string): City or region (e.g. `delhi`, `bengaluru`).
+  - `page` (number): Page number (Default: `1`).
+  - `resultsPerPage` (number): Results count (Default: `20`, Max: `50`).
+  - `sortBy` (string): `'relevance'`, `'date'`, or `'salary'`.
+  - `salaryMin` (number): Minimum annual salary in INR.
+  - `fullTime` (`1` / `0`): Filter full-time positions.
+  - `permanent` (`1` / `0`): Filter permanent positions.
 
-### **2. Start Development Servers**
-Run both Frontend (Vite) and Backend (Express) concurrently:
-```bash
-npm run dev
-```
-
-Or start individual services independently:
-- **Frontend only** (`http://localhost:5173`):
+- **Example Request**:
   ```bash
-  npm run dev:frontend
-  ```
-- **Backend only** (`http://localhost:5000`):
-  ```bash
-  npm run dev:backend
+  curl "http://localhost:5001/api/jobs/search?keyword=software+developer&location=delhi&page=1"
   ```
 
----
-
-## 📡 Health Endpoints
-
-- **API Health**: `GET http://localhost:5000/api/health`
+- **Example Standardized Response**:
   ```json
   {
     "success": true,
-    "message": "AI Job Portal API is running",
-    "timestamp": "2026-08-17T21:48:00.000Z",
-    "version": "1.0.0"
-  }
-  ```
-
-- **MongoDB Atlas Connection Health**: `GET http://localhost:5000/api/health/db`
-  ```json
-  {
-    "success": true,
-    "message": "MongoDB Atlas is connected and healthy",
-    "database": {
-      "host": "cluster0.xxx.mongodb.net",
-      "dbName": "ai_job_portal",
-      "readyState": 1
+    "data": {
+      "jobs": [
+        {
+          "id": "4892019482",
+          "title": "Senior Software Engineer",
+          "company": {
+            "name": "Tech Corp India"
+          },
+          "location": {
+            "displayName": "Delhi, India",
+            "area": ["India", "Delhi"]
+          },
+          "description": "We are seeking an experienced Full Stack Developer proficient in React and Node.js...",
+          "salary": {
+            "min": 1200000,
+            "max": 1800000,
+            "isPredicted": false
+          },
+          "url": "https://www.adzuna.co.in/land/ad/...",
+          "created": "2026-08-17T12:00:00Z",
+          "contractType": "permanent",
+          "contractTime": "full_time",
+          "category": "IT Jobs"
+        }
+      ],
+      "pagination": {
+        "page": 1,
+        "resultsPerPage": 20,
+        "total": 450,
+        "totalPages": 23
+      },
+      "country": "India (in)",
+      "attribution": "Jobs powered by Adzuna"
     }
   }
   ```
+
+### **2. Get Job Details (`GET /api/jobs/:id`)**
+- **Access**: Public
+- **Example Request**:
+  ```bash
+  curl "http://localhost:5001/api/jobs/4892019482"
+  ```
+
+---
+
+## 🏷️ Adzuna Required Attribution & Rate Limiting
+
+Per Adzuna's API Terms of Use, all job listing displays include visible attribution:
+**"Jobs powered by [Adzuna](https://www.adzuna.com)"**.
+
+**Rate Limiting Notice**:
+- Our Express backend proxies requests to Adzuna to keep API keys private.
+- Avoid aggressive automated polling. Adzuna rate-limit responses (HTTP 429) are handled gracefully by returning a clean JSON error response to the client.
