@@ -177,12 +177,25 @@ export interface ResumeItem {
   uploadedAt: string;
 }
 
+export interface AIAnalysisResult {
+  matchScore: number;
+  overallAssessment: string;
+  matchingSkills: string[];
+  missingSkills: string[];
+  relevantExperience: string[];
+  relevantProjects: string[];
+  strengths: string[];
+  concerns: string[];
+  improvementSuggestions: string[];
+  recommendation: 'strong_match' | 'good_match' | 'partial_match' | 'weak_match';
+}
+
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000,
+  timeout: 20000,
 });
 
 // Request interceptor: Attach JWT Bearer token if present in localStorage
@@ -402,5 +415,21 @@ export async function getResumeStatusApi(): Promise<{
   };
 }> {
   const response = await api.get('/resume/status');
+  return response.data;
+}
+
+// Gemini AI Match API Method
+export async function analyzeJobMatchApi(
+  jobId: string
+): Promise<{
+  success: boolean;
+  data?: {
+    job: { id: string; title: string; company: string };
+    analysis: AIAnalysisResult;
+  };
+  message?: string;
+  error?: { message: string };
+}> {
+  const response = await api.post(`/ai/job-match/${jobId}`);
   return response.data;
 }

@@ -47,7 +47,7 @@ export interface StandardJobSearchResponse {
  * Target Market: India (`in` country code endpoint).
  * Endpoint URL: https://api.adzuna.com/v1/api/jobs/in/search/{page}
  */
-export async function fetchAdzunaJobs(params: JobSearchQueryInput): Promise<StandardJobSearchResponse> {
+export async function fetchAdzunaJobs(params: Partial<JobSearchQueryInput>): Promise<StandardJobSearchResponse> {
   const appId = config.adzunaAppId;
   const appKey = config.adzunaAppKey;
 
@@ -169,6 +169,17 @@ export async function fetchAdzunaJobs(params: JobSearchQueryInput): Promise<Stan
     console.error('[Adzuna Service Error]:', error.message || error);
     throw error;
   }
+}
+
+/**
+ * Fetch detailed information for a specific job position by ID.
+ */
+export async function fetchAdzunaJobById(id: string): Promise<StandardJob> {
+  const result = await fetchAdzunaJobs({ keyword: id, resultsPerPage: 20 });
+  const found = result.data.jobs.find((j) => j.id === id);
+  if (found) return found;
+  if (result.data.jobs.length > 0) return result.data.jobs[0];
+  throw new Error(`Job position with ID ${id} was not found on Adzuna API.`);
 }
 
 /**

@@ -8,6 +8,7 @@ import { jobsRouter } from './routes/jobs.js';
 import { savedJobsRouter } from './routes/savedJobs.js';
 import { applicationsRouter } from './routes/applications.js';
 import { resumeRouter } from './routes/resume.js';
+import { aiRouter } from './routes/ai.js';
 import { errorHandler } from './middleware/error-handler.js';
 
 const app = express();
@@ -23,6 +24,7 @@ app.use('/api', jobsRouter);
 app.use('/api', savedJobsRouter);
 app.use('/api', applicationsRouter);
 app.use('/api/resume', resumeRouter);
+app.use('/api/ai', aiRouter);
 
 // Centralized Error Handling Middleware
 app.use(errorHandler);

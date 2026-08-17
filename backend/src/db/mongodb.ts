@@ -8,13 +8,13 @@ mongoose.set('bufferCommands', false);
  * Connects to MongoDB Atlas using Mongoose.
  */
 export async function connectDB(): Promise<typeof mongoose | null> {
-  if (!config.mongoUri) {
+  if (!config.mongodbUri) {
     console.warn('⚠️ MONGODB_URI is not set in environment variables. Database operations will be disabled until MONGODB_URI is configured.');
     return null;
   }
 
   try {
-    const conn = await mongoose.connect(config.mongoUri, {
+    const conn = await mongoose.connect(config.mongodbUri, {
       serverSelectionTimeoutMS: 5000,
     });
     console.log(`✅ MongoDB Atlas connected successfully: ${conn.connection.host}`);
@@ -40,7 +40,7 @@ export async function checkDBHealth(): Promise<{
   message: string;
   details?: Record<string, any>;
 }> {
-  if (!config.mongoUri) {
+  if (!config.mongodbUri) {
     return {
       connected: false,
       message: 'MONGODB_URI environment variable is missing.',
@@ -49,7 +49,7 @@ export async function checkDBHealth(): Promise<{
 
   try {
     if (mongoose.connection.readyState !== 1) {
-      await mongoose.connect(config.mongoUri, {
+      await mongoose.connect(config.mongodbUri, {
         serverSelectionTimeoutMS: 5000,
       });
     }

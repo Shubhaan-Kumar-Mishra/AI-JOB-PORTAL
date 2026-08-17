@@ -1,6 +1,6 @@
 # AI Job Portal
 
-A production-quality full-stack AI-powered job application platform built for local development and testing. Users can build profiles, upload resumes, extract and parse structured candidate data, search real job opportunities powered by the Adzuna API, save job positions, track job applications across workflow stages, receive Google Gemini AI compatibility scores (Stage 6), and manage their career pipeline.
+A production-quality full-stack AI-powered job application platform built for local development and testing. Users can build profiles, upload resumes, extract and parse structured candidate data, search real job opportunities powered by the Adzuna API, save job positions, track job applications across workflow stages, receive Google Gemini AI compatibility scores and detailed match assessments, and manage their career pipeline.
 
 ---
 
@@ -25,42 +25,60 @@ A production-quality full-stack AI-powered job application platform built for lo
 - **Authentication**: JWT & bcryptjs password hashing
 - **Job Search Provider**: Adzuna API (India Market `in`)
 - **Text Extraction**: `pdf-parse` (PDF) & `mammoth` (DOCX) in-memory
-- **AI Engine**: Google Gemini API (Stage 6)
+- **AI Engine**: Google Gemini API (`@google/genai` SDK, Model: `gemini-3.6-flash`)
 - **Email Service**: Resend API (Stage 7)
 
 ---
 
-## 📄 Stage 5 — Resume Upload & Text Extraction
+## 🤖 Stage 6 — Gemini AI Resume & Job Matching
 
-### **Features**
-1. **Supported File Formats**: PDF (`.pdf`) and Word (`.docx`). Rejects `.exe`, `.zip`, images, `.html`, `.js`, or arbitrary unsupported MIME types with HTTP 400.
-2. **File Size Limit**: Strict 10 MB maximum limit (enforced at Multer middleware level and controller level).
-3. **In-Memory Storage**: Uploaded files are processed strictly in-memory buffers (`multer.memoryStorage()`) without persistent disk storage.
-4. **Deterministic Heuristic Parsing**: Regular expressions and section headers automatically extract candidate metadata:
-   - Contact Info: Name, Email, Phone Number, Location
-   - Professional Summary / Objective
-   - Technical Skill chips (e.g. React, TypeScript, Node.js, Express, MongoDB, Docker, Git)
-   - Education Timeline (Degrees, Institutions, Dates)
-   - Work Experience Timeline (Positions, Companies, Dates, Descriptions)
-   - Key Projects (Names, Descriptions)
-5. **Resume Lifecycle & Replacement**: 1 active resume per candidate (`userId` unique index). Uploading a new file updates/replaces existing parsed data.
+### **Core Objective**
+Integrates Google's official `@google/genai` SDK in the Node.js/Express backend to analyze compatibility between a candidate's uploaded resume document and target Adzuna job listings.
+
+### **Architecture & Safety Directives**
+1. **System Instructions**: Gemini acts as an objective, professional resume and job matching assistant.
+2. **Strict Evaluation**: Compares explicitly present resume data against position requirements. Does NOT invent fake skills, experience, or qualifications.
+3. **Privacy & Fairness Guardrails**: Does NOT infer or make decisions based on protected personal characteristics (age, gender, race, religion, disability, marital status, etc.). Uses *"Not found in the provided resume"* rather than assuming candidate lacks a skill.
+4. **Structured JSON Output**: Validated against Zod schema (`aiJobMatchResponseSchema`).
 
 ---
 
-## 📡 Resume API Endpoints
+## 📡 Gemini AI API Endpoint
 
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| `POST` | `/api/resume` | Protected | Accepts `multipart/form-data` with field `resume`. Validates format, size (10MB max), extracts text in-memory, parses structured JSON, and upserts candidate document. |
-| `GET` | `/api/resume` | Protected | Retrieves current authenticated candidate's structured resume document (omits raw text by default). |
-| `DELETE` | `/api/resume` | Protected | Deletes candidate's resume document from MongoDB Atlas. |
-| `GET` | `/api/resume/status` | Protected | Returns candidate resume status (`hasResume`, `fileName`, `fileType`, `fileSize`, `uploadedAt`). |
+### `POST /api/ai/job-match/:jobId`
+- **Access**: Protected (`Authorization: Bearer <token>`)
+- **Pre-requisite**: Candidate must have an uploaded resume document in MongoDB Atlas. Returns `HTTP 400 Bad Request` if no resume exists.
+
+#### **Response Example**:
+```json
+{
+  "success": true,
+  "data": {
+    "job": {
+      "id": "5837138984",
+      "title": "Lead Software Architect",
+      "company": "Tech Solutions Pvt Ltd"
+    },
+    "analysis": {
+      "matchScore": 87,
+      "overallAssessment": "Strong candidate for this position based on technical skills in React, Node.js, TypeScript, and database architecture.",
+      "matchingSkills": ["React", "TypeScript", "Node.js", "Express", "MongoDB", "REST API", "Docker", "Git"],
+      "missingSkills": ["Kubernetes"],
+      "relevantExperience": ["Full Stack Software Architect"],
+      "relevantProjects": ["AI Job Portal"],
+      "strengths": ["Strong TypeScript and Node.js proficiency", "Hands-on Mongoose database architecture experience"],
+      "concerns": ["Kubernetes container orchestration experience not found in resume"],
+      "improvementSuggestions": ["Highlight cloud deployment projects and containerization experience on your resume"],
+      "recommendation": "strong_match"
+    }
+  }
+}
+```
 
 ---
 
 ## 🔒 Security & Privacy Strategy
-1. **JWT Verification**: Every `/api/resume` endpoint is protected by `authMiddleware`.
-2. **Derived User Identity**: Candidate ID is derived strictly from `req.user.id` on the server. `userId` in request body/params is ignored.
-3. **Double Extension & MIME Validation**: Verifies extension (`.pdf`, `.docx`) AND MIME type (`application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`).
-4. **Scanned PDF Handling**: Rejects scanned or unreadable PDFs with < 30 extractable characters with a clean error message.
-5. **No File Leakage**: Zero uploaded files or raw resume texts are logged to stdout/stderr or stored on server disk.
+1. **Gemini API Key**: `GEMINI_API_KEY` exists strictly in `backend/.env` and is never exposed to the frontend, logs, or error responses.
+2. **Minimal Job-Relevant Payload**: Sanitizes job listing data (title, company, description, location) and resume payload (skills, education, experience, projects). Excludes passwords, tokens, API keys, and sensitive personal attributes.
+3. **AI Disclaimer**: All match results include the mandatory disclaimer:
+   > *"This score is an AI-generated estimate based on the information in your resume and this job listing. It is not a hiring prediction."*
