@@ -9,6 +9,9 @@ import { RegisterPage } from './pages/RegisterPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { JobSearchPage } from './pages/JobSearchPage';
 import { JobDetailsPage } from './pages/JobDetailsPage';
+import { SavedJobsPage } from './pages/SavedJobsPage';
+import { ApplicationsPage } from './pages/ApplicationsPage';
+import { ApplicationDetailsPage } from './pages/ApplicationDetailsPage';
 
 export const App: React.FC = () => {
   return (
@@ -21,11 +24,37 @@ export const App: React.FC = () => {
             <Route path="jobs/:id" element={<JobDetailsPage />} />
             <Route path="login" element={<LoginPage />} />
             <Route path="register" element={<RegisterPage />} />
+
+            {/* Protected Routes */}
             <Route
               path="dashboard"
               element={
                 <ProtectedRoute>
                   <DashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="saved-jobs"
+              element={
+                <ProtectedRoute>
+                  <SavedJobsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="applications"
+              element={
+                <ProtectedRoute>
+                  <ApplicationsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="applications/:id"
+              element={
+                <ProtectedRoute>
+                  <ApplicationDetailsPage />
                 </ProtectedRoute>
               }
             />

@@ -1,6 +1,6 @@
 # AI Job Portal
 
-A production-quality full-stack AI-powered job application platform built for local development and testing. Users can build profiles, upload resumes, search real job opportunities powered by the Adzuna API, receive Google Gemini AI compatibility scores and skill gap analyses, track applications, and receive email notifications.
+A production-quality full-stack AI-powered job application platform built for local development and testing. Users can build profiles, upload resumes, search real job opportunities powered by the Adzuna API, save job positions, track job applications across workflow stages, receive Google Gemini AI compatibility scores, and manage their career pipeline.
 
 ---
 
@@ -17,10 +17,12 @@ A production-quality full-stack AI-powered job application platform built for lo
 - **Runtime**: Node.js
 - **Framework**: Express.js
 - **Language**: TypeScript
+- **Database ORM**: Mongoose
 - **Dev Runner**: `tsx` (TypeScript Execution Engine)
 
 ### **Database & External Services**
 - **Database**: MongoDB Atlas (via Mongoose)
+- **Authentication**: JWT & bcryptjs password hashing
 - **Job Search Provider**: Adzuna API (India Market `in`)
 - **AI Engine**: Google Gemini API (Stage 5)
 - **Email Service**: Resend API (Stage 7)
@@ -36,7 +38,7 @@ ai-job-portal/
 ├── package.json              # Monorepo root script runner & workspace definitions
 ├── README.md                 # Technical documentation & setup guide
 ├── backend/
-│   ├── .env.example          # Backend environment variables
+│   ├── .env.example          # Backend environment variables template
 │   ├── package.json          # Node.js + Express dependencies
 │   ├── tsconfig.json         # Backend TypeScript configuration
 │   └── src/
@@ -51,20 +53,28 @@ ai-job-portal/
 │       │   ├── validationMiddleware.ts # Zod request validation wrapper
 │       │   └── error-handler.ts        # Express error handler middleware
 │       ├── models/
-│       │   └── User.ts       # Mongoose User schema & bcrypt logic
+│       │   ├── User.ts         # User schema & bcrypt logic
+│       │   ├── SavedJob.ts     # Saved jobs schema with compound unique index
+│       │   └── Application.ts  # Application tracking schema & status enum
 │       ├── services/
 │       │   └── adzuna.service.ts # Adzuna REST API service & payload normalizer
 │       ├── validators/
-│       │   ├── authValidators.ts # Auth validation schemas
-│       │   └── jobValidators.ts  # Job search query validation schemas
+│       │   ├── authValidators.ts       # Auth validation schemas
+│       │   ├── jobValidators.ts        # Job search query validation schemas
+│       │   ├── savedJobValidators.ts   # Saved job payload schemas
+│       │   └── applicationValidators.ts# Application tracking validation schemas
 │       ├── controllers/
-│       │   ├── authController.ts # User auth & profile endpoints
-│       │   └── jobsController.ts # Adzuna job search & detail endpoints
+│       │   ├── authController.ts       # User auth & profile endpoints
+│       │   ├── jobsController.ts       # Adzuna job search & detail endpoints
+│       │   ├── savedJobsController.ts  # Saved jobs CRUD handlers
+│       │   └── applicationsController.ts# Application tracking & dashboard stats
 │       └── routes/
-│           ├── health.ts     # Health endpoints (/api/health & /api/health/db)
-│           ├── auth.ts       # User authentication routes
-│           ├── jobs.ts       # Job search routes (/api/jobs/search & /api/jobs/:id)
-│           └── resume.ts     # AI resume analysis placeholder
+│           ├── health.ts       # Health endpoints (/api/health & /api/health/db)
+│           ├── auth.ts         # User authentication routes
+│           ├── jobs.ts         # Job search routes (/api/jobs/search & /api/jobs/:id)
+│           ├── savedJobs.ts    # Saved job endpoints (/api/jobs/:id/save & /api/users/saved-jobs)
+│           ├── applications.ts # Application endpoints (/api/applications & /api/users/dashboard-stats)
+│           └── resume.ts       # AI resume analysis placeholder
 └── frontend/
     ├── package.json          # React frontend dependencies
     ├── tsconfig.json         # React TypeScript configuration
@@ -74,121 +84,83 @@ ai-job-portal/
     ├── index.html            # Entry HTML with Inter typography & metadata
     └── src/
         ├── main.tsx          # React DOM root mounting
-        ├── App.tsx           # Router configuration
+        ├── App.tsx           # Router configuration with protected routes
         ├── index.css         # Tailwind directives & glassmorphism utilities
         ├── context/
         │   └── AuthContext.tsx # User session & token state context
         ├── services/
-        │   └── api.ts        # Axios API client & job search service methods
+        │   └── api.ts        # Axios API client for Auth, Jobs, Saved Jobs, Applications & Stats
         ├── components/
         │   ├── ProtectedRoute.tsx # Auth route guard
         │   ├── Navbar.tsx    # Header with navigation & session controls
         │   ├── Footer.tsx    # Footer with architecture tags
         │   └── Layout.tsx    # Responsive page layout wrapper
         └── pages/
-            ├── LandingPage.tsx   # Hero section & feature preview
-            ├── LoginPage.tsx     # Functional login form
-            ├── RegisterPage.tsx  # Functional registration form
-            ├── DashboardPage.tsx # Candidate dashboard & profile editor
-            ├── JobSearchPage.tsx # Real-time Adzuna job search UI & filters
-            └── JobDetailsPage.tsx# Job details & external application redirect
+            ├── LandingPage.tsx       # Hero section & feature preview
+            ├── LoginPage.tsx         # Functional login form
+            ├── RegisterPage.tsx      # Functional registration form
+            ├── DashboardPage.tsx     # Candidate dashboard & real-time DB counts
+            ├── JobSearchPage.tsx     # Real-time Adzuna job search UI & interactive Save Job toggle
+            ├── JobDetailsPage.tsx    # Job details, Save Job toggle & Track Application CTA
+            ├── SavedJobsPage.tsx     # Candidate saved jobs collection (/saved-jobs)
+            ├── ApplicationsPage.tsx  # Pipeline application tracker (/applications)
+            └── ApplicationDetailsPage.tsx # Detailed application manager (/applications/:id)
 ```
 
 ---
 
-## 🔑 Environment Variables
+## 🗄️ Database Schemas
 
-Copy `.env.example` to `.env` in the workspace root and/or `backend/`:
+### **1. SavedJob Schema**
+- `userId`: `ObjectId` (Ref: `User`, Required)
+- `jobId`: `String` (Required)
+- `title`: `String` (Required)
+- `companyName`: `String` (Required)
+- `location`: `String` (Required)
+- `jobUrl`: `String` (Required)
+- `salary`: `{ min: Number, max: Number, isPredicted: Boolean }`
+- `savedAt`: `Date` (Default: `Date.now`)
+- **Index**: Compound unique index `{ userId: 1, jobId: 1 }` (prevents duplicate saves per user).
 
-```bash
-cp .env.example .env
-cp .env.example backend/.env
-```
-
-| Variable | Required | Description |
-|---|---|---|
-| `PORT` | Optional | Local Express Server Port (Default: `5001`) |
-| `MONGODB_URI` | Required | MongoDB Atlas Connection String (`mongodb+srv://...`) |
-| `JWT_SECRET` | Required | Secret key for JWT token signing |
-| `ADZUNA_APP_ID` | Required | Adzuna Developer Application ID |
-| `ADZUNA_APP_KEY` | Required | Adzuna Developer Application Key |
-
----
-
-## 📡 Adzuna Job Search API Documentation
-
-### **1. Search Jobs (`GET /api/jobs/search`)**
-- **Access**: Public
-- **Query Parameters**:
-  - `keyword` (string): Search query for job title/skills (e.g. `developer`).
-  - `location` (string): City or region (e.g. `delhi`, `bengaluru`).
-  - `page` (number): Page number (Default: `1`).
-  - `resultsPerPage` (number): Results count (Default: `20`, Max: `50`).
-  - `sortBy` (string): `'relevance'`, `'date'`, or `'salary'`.
-  - `salaryMin` (number): Minimum annual salary in INR.
-  - `fullTime` (`1` / `0`): Filter full-time positions.
-  - `permanent` (`1` / `0`): Filter permanent positions.
-
-- **Example Request**:
-  ```bash
-  curl "http://localhost:5001/api/jobs/search?keyword=software+developer&location=delhi&page=1"
-  ```
-
-- **Example Standardized Response**:
-  ```json
-  {
-    "success": true,
-    "data": {
-      "jobs": [
-        {
-          "id": "4892019482",
-          "title": "Senior Software Engineer",
-          "company": {
-            "name": "Tech Corp India"
-          },
-          "location": {
-            "displayName": "Delhi, India",
-            "area": ["India", "Delhi"]
-          },
-          "description": "We are seeking an experienced Full Stack Developer proficient in React and Node.js...",
-          "salary": {
-            "min": 1200000,
-            "max": 1800000,
-            "isPredicted": false
-          },
-          "url": "https://www.adzuna.co.in/land/ad/...",
-          "created": "2026-08-17T12:00:00Z",
-          "contractType": "permanent",
-          "contractTime": "full_time",
-          "category": "IT Jobs"
-        }
-      ],
-      "pagination": {
-        "page": 1,
-        "resultsPerPage": 20,
-        "total": 450,
-        "totalPages": 23
-      },
-      "country": "India (in)",
-      "attribution": "Jobs powered by Adzuna"
-    }
-  }
-  ```
-
-### **2. Get Job Details (`GET /api/jobs/:id`)**
-- **Access**: Public
-- **Example Request**:
-  ```bash
-  curl "http://localhost:5001/api/jobs/4892019482"
-  ```
+### **2. Application Schema**
+- `userId`: `ObjectId` (Ref: `User`, Required)
+- `jobId`: `String` (Required)
+- `jobTitle`: `String` (Required)
+- `companyName`: `String` (Required)
+- `location`: `String` (Required)
+- `jobUrl`: `String` (Required)
+- `status`: `Enum` (`'applied'`, `'under_review'`, `'interview'`, `'offer'`, `'rejected'`), Default: `'applied'`
+- `notes`: `String` (Max length: 2000)
+- `appliedAt`: `Date` (Default: `Date.now`)
+- **Index**: Compound unique index `{ userId: 1, jobId: 1 }` (prevents duplicate applications per user).
 
 ---
 
-## 🏷️ Adzuna Required Attribution & Rate Limiting
+## 📡 Stage 4 API Endpoints
 
-Per Adzuna's API Terms of Use, all job listing displays include visible attribution:
-**"Jobs powered by [Adzuna](https://www.adzuna.com)"**.
+### **Saved Jobs Endpoints**
 
-**Rate Limiting Notice**:
-- Our Express backend proxies requests to Adzuna to keep API keys private.
-- Avoid aggressive automated polling. Adzuna rate-limit responses (HTTP 429) are handled gracefully by returning a clean JSON error response to the client.
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `POST` | `/api/jobs/:id/save` | Protected | Saves a job position to authenticated user's collection. |
+| `DELETE` | `/api/jobs/:id/save` | Protected | Removes saved job position from authenticated user's collection. |
+| `GET` | `/api/users/saved-jobs` | Protected | Lists candidate's saved jobs with pagination support. |
+| `GET` | `/api/jobs/:id/saved` | Protected | Checks if specific job is saved by current candidate. |
+
+### **Application Tracking Endpoints**
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `POST` | `/api/applications` | Protected | Records a new application position snapshot with default status `'applied'`. |
+| `GET` | `/api/applications` | Protected | Lists candidate's applications with status filter (`applied`, `under_review`, `interview`, `offer`, `rejected`). |
+| `GET` | `/api/applications/:id` | Protected | Retrieves single application details (Ownership strictly enforced). |
+| `PATCH` | `/api/applications/:id` | Protected | Updates application `status` or `notes` (Ownership strictly enforced). |
+| `DELETE` | `/api/applications/:id` | Protected | Deletes an application record (Ownership strictly enforced). |
+| `GET` | `/api/users/dashboard-stats` | Protected | Aggregates live MongoDB counts for Saved Jobs, Applications, Interviews, and Offers. |
+
+---
+
+## 🔒 Authorization & Security Controls
+1. **JWT Verification**: Every saved job and application operation requires a valid JWT token in `Authorization: Bearer <token>`.
+2. **Derived User Identity**: Candidate ID is derived strictly from `req.user.id` on the server. `userId` in request body/params is ignored.
+3. **Ownership Isolation**: Queries filter by `{ _id: id, userId: req.user.id }`. User A cannot view, modify, or delete User B's saved jobs or applications (returns 404 Not Found).

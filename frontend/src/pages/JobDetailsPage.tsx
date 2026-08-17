@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useLocation, Link } from 'react-router-dom';
+import { useParams, useLocation, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Building2,
@@ -13,18 +13,34 @@ import {
   Loader2,
   AlertCircle,
   FileText,
+  Check,
+  FileCheck,
 } from 'lucide-react';
-import { getJobDetailsApi, StandardJob } from '../services/api';
+import {
+  getJobDetailsApi,
+  saveJobApi,
+  removeSavedJobApi,
+  checkJobSavedApi,
+  createApplicationApi,
+  StandardJob,
+} from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 export const JobDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
 
-  // Use passed location state if available, or fetch details from API
   const initialJob: StandardJob | null = location.state?.job || null;
   const [job, setJob] = useState<StandardJob | null>(initialJob);
   const [isLoading, setIsLoading] = useState<boolean>(!initialJob);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Saved State & Application Tracking State
+  const [isSaved, setIsSaved] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isTracking, setIsTracking] = useState<boolean>(false);
 
   useEffect(() => {
     if (!job && id) {
@@ -44,6 +60,80 @@ export const JobDetailsPage: React.FC = () => {
         .finally(() => setIsLoading(false));
     }
   }, [id, job]);
+
+  useEffect(() => {
+    if (id && isAuthenticated) {
+      checkJobSavedApi(id).then((res) => {
+        if (res.success) {
+          setIsSaved(res.data.saved);
+        }
+      });
+    }
+  }, [id, isAuthenticated]);
+
+  const handleToggleSave = async () => {
+    if (!isAuthenticated) {
+      if (window.confirm('You must be signed in to save jobs. Would you like to sign in now?')) {
+        navigate('/login');
+      }
+      return;
+    }
+
+    if (!job) return;
+
+    try {
+      setIsSaving(true);
+      if (isSaved) {
+        await removeSavedJobApi(job.id);
+        setIsSaved(false);
+      } else {
+        await saveJobApi(job.id, {
+          title: job.title,
+          companyName: job.company.name,
+          location: job.location.displayName,
+          jobUrl: job.url,
+          salary: job.salary,
+        });
+        setIsSaved(true);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error?.message || 'Failed to update saved status.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleTrackApplication = async () => {
+    if (!isAuthenticated) {
+      if (window.confirm('You must be signed in to track job applications. Would you like to sign in now?')) {
+        navigate('/login');
+      }
+      return;
+    }
+
+    if (!job) return;
+
+    try {
+      setIsTracking(true);
+      await createApplicationApi({
+        jobId: job.id,
+        jobTitle: job.title,
+        companyName: job.company.name,
+        location: job.location.displayName,
+        jobUrl: job.url,
+        notes: 'Applied via company site link on AI Job Portal.',
+      });
+      navigate('/applications');
+    } catch (err: any) {
+      if (err.response?.status === 409) {
+        navigate('/applications');
+      } else {
+        alert(err.response?.data?.error?.message || 'Failed to record application.');
+      }
+    } finally {
+      setIsTracking(false);
+    }
+  };
 
   const formatSalary = (min: number | null, max: number | null) => {
     if (!min && !max) return 'Salary Undisclosed';
@@ -96,7 +186,7 @@ export const JobDetailsPage: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-      {/* Back Navigation Link */}
+      {/* Back Link */}
       <Link
         to="/jobs"
         className="inline-flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-white mb-6 transition-colors"
@@ -144,17 +234,40 @@ export const JobDetailsPage: React.FC = () => {
               href={job.url}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={handleTrackApplication}
               className="px-6 py-3 rounded-xl bg-gradient-to-r from-brand-600 to-accent-600 hover:from-brand-500 hover:to-accent-500 text-white font-bold text-sm shadow-xl shadow-brand-500/25 transition-all flex items-center justify-center gap-2 hover:scale-[1.02]"
             >
               Apply on Company Site <ExternalLink className="w-4 h-4" />
             </a>
 
             <button
-              disabled
-              title="Save Job functionality will be enabled in Stage 4"
-              className="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-500 font-semibold text-xs flex items-center justify-center gap-2 opacity-60 cursor-not-allowed"
+              disabled={isSaving}
+              onClick={handleToggleSave}
+              className={`px-4 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+                isSaved
+                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
+                  : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-brand-500/40 hover:text-white'
+              }`}
             >
-              <Bookmark className="w-4 h-4" /> Save Job Position
+              {isSaving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : isSaved ? (
+                <>
+                  <Check className="w-4 h-4 text-emerald-400" /> Saved Position
+                </>
+              ) : (
+                <>
+                  <Bookmark className="w-4 h-4 text-slate-400" /> Save Job Position
+                </>
+              )}
+            </button>
+
+            <button
+              disabled={isTracking}
+              onClick={handleTrackApplication}
+              className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white font-semibold text-xs flex items-center justify-center gap-2"
+            >
+              {isTracking ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileCheck className="w-4 h-4 text-brand-400" />} Track Application
             </button>
           </div>
         </div>
@@ -186,6 +299,7 @@ export const JobDetailsPage: React.FC = () => {
             href={job.url}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={handleTrackApplication}
             className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs whitespace-nowrap shadow-md transition-colors flex items-center gap-1.5"
           >
             Apply Now <ExternalLink className="w-3.5 h-3.5" />

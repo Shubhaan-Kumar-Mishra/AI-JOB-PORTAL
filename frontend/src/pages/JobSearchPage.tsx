@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search,
   MapPin,
@@ -15,10 +15,14 @@ import {
   Building2,
   Calendar,
   Sparkles,
+  Check,
 } from 'lucide-react';
-import { searchJobsApi, StandardJob } from '../services/api';
+import { searchJobsApi, saveJobApi, removeSavedJobApi, checkJobSavedApi, StandardJob } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 export const JobSearchPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Filter State
@@ -36,7 +40,10 @@ export const JobSearchPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Controlled execution: API request fires only on explicit search submit, page change, or sort change
+  // Saved Jobs Tracking State (Map of jobId -> boolean)
+  const [savedMap, setSavedMap] = useState<Record<string, boolean>>({});
+  const [savingJobId, setSavingJobId] = useState<string | null>(null);
+
   const fetchJobs = async (targetPage = page, targetSort = sortBy) => {
     try {
       setIsLoading(true);
@@ -86,6 +93,37 @@ export const JobSearchPage: React.FC = () => {
       page: '1',
     });
     fetchJobs(1, sortBy);
+  };
+
+  const handleToggleSaveJob = async (job: StandardJob) => {
+    if (!isAuthenticated) {
+      if (window.confirm('You must be signed in to save jobs. Would you like to sign in now?')) {
+        navigate('/login');
+      }
+      return;
+    }
+
+    const isCurrentlySaved = !!savedMap[job.id];
+    try {
+      setSavingJobId(job.id);
+      if (isCurrentlySaved) {
+        await removeSavedJobApi(job.id);
+        setSavedMap((prev) => ({ ...prev, [job.id]: false }));
+      } else {
+        await saveJobApi(job.id, {
+          title: job.title,
+          companyName: job.company.name,
+          location: job.location.displayName,
+          jobUrl: job.url,
+          salary: job.salary,
+        });
+        setSavedMap((prev) => ({ ...prev, [job.id]: true }));
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error?.message || 'Failed to update saved job status');
+    } finally {
+      setSavingJobId(null);
+    }
   };
 
   const formatSalary = (min: number | null, max: number | null) => {
@@ -269,69 +307,88 @@ export const JobSearchPage: React.FC = () => {
             <span>Page {pagination.page} of {pagination.totalPages}</span>
           </div>
 
-          {jobs.map((job) => (
-            <div
-              key={job.id}
-              className="glass-panel p-6 rounded-2xl border border-slate-800 hover:border-brand-500/40 transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-6 group"
-            >
-              <div className="space-y-2.5 flex-grow">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-brand-500/10 text-brand-300 border border-brand-500/20">
-                    {job.category}
-                  </span>
-                  {job.contractTime && (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300 uppercase">
-                      {job.contractTime === 'full_time' ? 'Full Time' : job.contractTime}
+          {jobs.map((job) => {
+            const isSaved = !!savedMap[job.id];
+            const isSavingThis = savingJobId === job.id;
+
+            return (
+              <div
+                key={job.id}
+                className="glass-panel p-6 rounded-2xl border border-slate-800 hover:border-brand-500/40 transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-6 group"
+              >
+                <div className="space-y-2.5 flex-grow">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-brand-500/10 text-brand-300 border border-brand-500/20">
+                      {job.category}
                     </span>
-                  )}
-                  <span className="text-[11px] text-slate-500 flex items-center gap-1">
-                    <Calendar className="w-3 h-3" /> {formatDate(job.created)}
-                  </span>
+                    {job.contractTime && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300 uppercase">
+                        {job.contractTime === 'full_time' ? 'Full Time' : job.contractTime}
+                      </span>
+                    )}
+                    <span className="text-[11px] text-slate-500 flex items-center gap-1">
+                      <Calendar className="w-3 h-3" /> {formatDate(job.created)}
+                    </span>
+                  </div>
+
+                  <h3 className="text-xl font-bold text-white group-hover:text-brand-300 transition-colors">
+                    <Link to={`/jobs/${job.id}`} state={{ job }}>
+                      {job.title}
+                    </Link>
+                  </h3>
+
+                  <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 font-medium">
+                    <span className="flex items-center gap-1 text-slate-300">
+                      <Building2 className="w-3.5 h-3.5 text-brand-400" /> {job.company.name}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-emerald-400" /> {job.location.displayName}
+                    </span>
+                    <span className="flex items-center gap-1 text-emerald-400 font-semibold">
+                      <DollarSign className="w-3.5 h-3.5" /> {formatSalary(job.salary.min, job.salary.max)}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+                    {job.description}
+                  </p>
                 </div>
 
-                <h3 className="text-xl font-bold text-white group-hover:text-brand-300 transition-colors">
-                  <Link to={`/jobs/${job.id}`} state={{ job }}>
-                    {job.title}
+                {/* Action Buttons */}
+                <div className="flex md:flex-col items-center gap-2.5 shrink-0 w-full md:w-auto justify-end">
+                  <Link
+                    to={`/jobs/${job.id}`}
+                    state={{ job }}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs shadow-md transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    View Details <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
-                </h3>
 
-                <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 font-medium">
-                  <span className="flex items-center gap-1 text-slate-300">
-                    <Building2 className="w-3.5 h-3.5 text-brand-400" /> {job.company.name}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-emerald-400" /> {job.location.displayName}
-                  </span>
-                  <span className="flex items-center gap-1 text-emerald-400 font-semibold">
-                    <DollarSign className="w-3.5 h-3.5" /> {formatSalary(job.salary.min, job.salary.max)}
-                  </span>
+                  <button
+                    disabled={isSavingThis}
+                    onClick={() => handleToggleSaveJob(job)}
+                    className={`w-full sm:w-auto px-3.5 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                      isSaved
+                        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
+                        : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-brand-500/40 hover:text-white'
+                    }`}
+                  >
+                    {isSavingThis ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : isSaved ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" /> Saved
+                      </>
+                    ) : (
+                      <>
+                        <Bookmark className="w-3.5 h-3.5 text-slate-400" /> Save Job
+                      </>
+                    )}
+                  </button>
                 </div>
-
-                <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
-                  {job.description}
-                </p>
               </div>
-
-              {/* Action Buttons */}
-              <div className="flex md:flex-col items-center gap-2.5 shrink-0 w-full md:w-auto justify-end">
-                <Link
-                  to={`/jobs/${job.id}`}
-                  state={{ job }}
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs shadow-md transition-colors flex items-center justify-center gap-1.5"
-                >
-                  View Details <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
-
-                <button
-                  disabled
-                  title="Save Job functionality will be enabled in Stage 4"
-                  className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-500 font-semibold text-xs flex items-center justify-center gap-1.5 opacity-60 cursor-not-allowed"
-                >
-                  <Bookmark className="w-3.5 h-3.5" /> Save Job
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           {/* Pagination Controls */}
           {pagination.totalPages > 1 && (

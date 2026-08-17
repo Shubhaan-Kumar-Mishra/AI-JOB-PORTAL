@@ -93,6 +93,47 @@ export interface JobSearchParams {
   permanent?: boolean;
 }
 
+export interface SavedJobItem {
+  _id: string;
+  userId: string;
+  jobId: string;
+  title: string;
+  companyName: string;
+  location: string;
+  jobUrl: string;
+  salary?: {
+    min?: number | null;
+    max?: number | null;
+    isPredicted?: boolean;
+  };
+  savedAt: string;
+  createdAt: string;
+}
+
+export type ApplicationStatus = 'applied' | 'under_review' | 'interview' | 'offer' | 'rejected';
+
+export interface ApplicationItem {
+  _id: string;
+  userId: string;
+  jobId: string;
+  jobTitle: string;
+  companyName: string;
+  location: string;
+  jobUrl: string;
+  status: ApplicationStatus;
+  notes?: string;
+  appliedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DashboardStats {
+  savedJobsCount: number;
+  applicationsCount: number;
+  interviewsCount: number;
+  offersCount: number;
+}
+
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
@@ -187,5 +228,94 @@ export async function getJobDetailsApi(
   id: string
 ): Promise<{ success: boolean; data: { job: StandardJob; attribution: { text: string; link: string } } }> {
   const response = await api.get(`/jobs/${id}`);
+  return response.data;
+}
+
+// Saved Jobs API Methods
+export async function saveJobApi(
+  jobId: string,
+  snapshot?: { title?: string; companyName?: string; location?: string; jobUrl?: string; salary?: any }
+): Promise<{ success: boolean; message: string; data: { savedJob: SavedJobItem } }> {
+  const response = await api.post(`/jobs/${jobId}/save`, snapshot || {});
+  return response.data;
+}
+
+export async function removeSavedJobApi(
+  jobId: string
+): Promise<{ success: boolean; message: string; data: { jobId: string } }> {
+  const response = await api.delete(`/jobs/${jobId}/save`);
+  return response.data;
+}
+
+export async function getSavedJobsApi(
+  page = 1,
+  limit = 20
+): Promise<{
+  success: boolean;
+  data: { savedJobs: SavedJobItem[]; pagination: { page: number; limit: number; total: number; totalPages: number } };
+}> {
+  const response = await api.get('/users/saved-jobs', { params: { page, limit } });
+  return response.data;
+}
+
+export async function checkJobSavedApi(
+  jobId: string
+): Promise<{ success: boolean; data: { saved: boolean; savedJobId: string | null } }> {
+  const response = await api.get(`/jobs/${jobId}/saved`);
+  return response.data;
+}
+
+// Application Tracking API Methods
+export async function createApplicationApi(data: {
+  jobId: string;
+  jobTitle?: string;
+  companyName?: string;
+  location?: string;
+  jobUrl?: string;
+  notes?: string;
+}): Promise<{ success: boolean; message: string; data: { application: ApplicationItem } }> {
+  const response = await api.post('/applications', data);
+  return response.data;
+}
+
+export async function getApplicationsApi(
+  page = 1,
+  limit = 10,
+  status?: ApplicationStatus
+): Promise<{
+  success: boolean;
+  data: { applications: ApplicationItem[]; pagination: { page: number; limit: number; total: number; totalPages: number } };
+}> {
+  const response = await api.get('/applications', { params: { page, limit, status } });
+  return response.data;
+}
+
+export async function getApplicationByIdApi(
+  id: string
+): Promise<{ success: boolean; data: { application: ApplicationItem } }> {
+  const response = await api.get(`/applications/${id}`);
+  return response.data;
+}
+
+export async function updateApplicationApi(
+  id: string,
+  data: { status?: ApplicationStatus; notes?: string }
+): Promise<{ success: boolean; message: string; data: { application: ApplicationItem } }> {
+  const response = await api.patch(`/applications/${id}`, data);
+  return response.data;
+}
+
+export async function deleteApplicationApi(
+  id: string
+): Promise<{ success: boolean; message: string; data: { id: string } }> {
+  const response = await api.delete(`/applications/${id}`);
+  return response.data;
+}
+
+export async function getDashboardStatsApi(): Promise<{
+  success: boolean;
+  data: DashboardStats;
+}> {
+  const response = await api.get('/users/dashboard-stats');
   return response.data;
 }

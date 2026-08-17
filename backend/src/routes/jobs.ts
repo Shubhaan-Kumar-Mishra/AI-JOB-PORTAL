@@ -8,11 +8,11 @@ export const jobsRouter = Router();
  * @desc    Search jobs dynamically via Adzuna API
  * @access  Public
  */
-jobsRouter.get('/search', searchJobs);
+jobsRouter.get('/jobs/search', searchJobs);
 
 /**
  * @route   GET /api/jobs/:id
- * @desc    Get detailed information for a specific job
+ * @desc    Get detailed information for a specific job position
  * @access  Public
  */
-jobsRouter.get('/:id', getJobById);
+jobsRouter.get('/jobs/:id', getJobById);
