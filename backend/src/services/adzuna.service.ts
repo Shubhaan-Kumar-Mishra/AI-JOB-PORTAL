@@ -35,28 +35,32 @@ export interface StandardJobSearchResponse {
       totalPages: number;
     };
     country: string;
-    attribution: string;
+    attribution: {
+      text: string;
+      link: string;
+    };
   };
 }
 
 /**
  * Service to interact with the official Adzuna Job Search API.
- * Uses Adzuna's India market endpoint (`in`) by default.
+ * Target Market: India (`in` country code endpoint).
+ * Endpoint URL: https://api.adzuna.com/v1/api/jobs/in/search/{page}
  */
 export async function fetchAdzunaJobs(params: JobSearchQueryInput): Promise<StandardJobSearchResponse> {
   const appId = config.adzunaAppId;
   const appKey = config.adzunaAppKey;
 
-  // Validate credentials exist
+  // Validate environment credentials exist before making external call
   if (!appId || !appKey) {
     throw new Error('Adzuna API credentials (ADZUNA_APP_ID / ADZUNA_APP_KEY) are not configured in environment variables.');
   }
 
-  const country = 'in'; // Primary market: India
+  const country = 'in'; // Explicit target country: India
   const page = params.page || 1;
   const resultsPerPage = params.resultsPerPage || 20;
 
-  // Construct Adzuna API URL safely
+  // Construct official Adzuna API request URL for India
   const url = new URL(`https://api.adzuna.com/v1/api/jobs/${country}/search/${page}`);
   url.searchParams.append('app_id', appId);
   url.searchParams.append('app_key', appKey);
@@ -100,27 +104,27 @@ export async function fetchAdzunaJobs(params: JobSearchQueryInput): Promise<Stan
 
     if (!response.ok) {
       if (response.status === 400) {
-        throw new Error('Invalid parameters sent to Adzuna API.');
+        throw new Error('Invalid query parameters sent to Adzuna API.');
       }
       if (response.status === 401 || response.status === 403) {
-        throw new Error('Adzuna API authentication failed. Please verify ADZUNA_APP_ID and ADZUNA_APP_KEY.');
+        throw new Error('Adzuna API authentication failed. Please check ADZUNA_APP_ID and ADZUNA_APP_KEY.');
       }
       if (response.status === 429) {
-        throw new Error('Adzuna API rate limit exceeded. Please try again later.');
+        throw new Error('Adzuna API rate limit exceeded. Please wait a moment before trying again.');
       }
-      throw new Error(`Adzuna API returned error status ${response.status}`);
+      throw new Error(`Adzuna API service error: status code ${response.status}`);
     }
 
     const rawData = (await response.json()) as any;
 
     if (!rawData || !Array.isArray(rawData.results)) {
-      throw new Error('Unexpected response format received from Adzuna API.');
+      throw new Error('Malformed JSON payload received from Adzuna API.');
     }
 
-    // Transform raw Adzuna response to our standard job format
+    // Transform raw Adzuna fields into our standard model
     const jobs: StandardJob[] = rawData.results.map((item: any) => ({
       id: String(item.id || item.adref || Math.random().toString(36).substring(2, 9)),
-      title: stripHtmlTags(item.title || 'Untitled Job Position'),
+      title: stripHtmlTags(item.title || 'Job Opportunity'),
       company: {
         name: item.company?.display_name || 'Company Not Specified',
       },
@@ -128,17 +132,17 @@ export async function fetchAdzunaJobs(params: JobSearchQueryInput): Promise<Stan
         displayName: item.location?.display_name || 'India',
         area: item.location?.area || [],
       },
-      description: stripHtmlTags(item.description || 'No detailed description available.'),
+      description: stripHtmlTags(item.description || 'No job summary snippet provided.'),
       salary: {
         min: item.salary_min !== undefined ? Math.round(item.salary_min) : null,
         max: item.salary_max !== undefined ? Math.round(item.salary_max) : null,
         isPredicted: item.salary_is_predicted === '1' || item.salary_is_predicted === 1,
       },
-      url: item.redirect_url || '#',
+      url: item.redirect_url || 'https://www.adzuna.in',
       created: item.created || new Date().toISOString(),
       contractType: item.contract_type || null,
       contractTime: item.contract_time || null,
-      category: item.category?.label || 'Technology & Engineering',
+      category: item.category?.label || 'General',
     }));
 
     const total = rawData.count || jobs.length;
@@ -155,17 +159,20 @@ export async function fetchAdzunaJobs(params: JobSearchQueryInput): Promise<Stan
           totalPages,
         },
         country: 'India (in)',
-        attribution: 'Jobs powered by Adzuna',
+        attribution: {
+          text: 'Jobs by Adzuna',
+          link: 'https://www.adzuna.in',
+        },
       },
     };
   } catch (error: any) {
-    console.error('Error fetching Adzuna jobs:', error.message || error);
+    console.error('[Adzuna Service Error]:', error.message || error);
     throw error;
   }
 }
 
 /**
- * Helper utility to remove HTML formatting tags from string values.
+ * Utility to strip HTML tags from Adzuna text fields.
  */
 function stripHtmlTags(str: string): string {
   if (!str) return '';

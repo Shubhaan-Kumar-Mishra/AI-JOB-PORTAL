@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Search,
   MapPin,
   Briefcase,
   DollarSign,
-  Filter,
   ArrowRight,
   Bookmark,
   ExternalLink,
@@ -17,11 +16,10 @@ import {
   Calendar,
   Sparkles,
 } from 'lucide-react';
-import { searchJobsApi, StandardJob, StandardJobSearchResponse } from '../services/api';
+import { searchJobsApi, StandardJob } from '../services/api';
 
 export const JobSearchPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
 
   // Filter State
   const [keyword, setKeyword] = useState(searchParams.get('keyword') || 'Developer');
@@ -38,7 +36,8 @@ export const JobSearchPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const fetchJobs = async () => {
+  // Controlled execution: API request fires only on explicit search submit, page change, or sort change
+  const fetchJobs = async (targetPage = page, targetSort = sortBy) => {
     try {
       setIsLoading(true);
       setErrorMsg(null);
@@ -46,9 +45,9 @@ export const JobSearchPage: React.FC = () => {
       const res = await searchJobsApi({
         keyword,
         location,
-        page,
+        page: targetPage,
         resultsPerPage: 15,
-        sortBy,
+        sortBy: targetSort,
         salaryMin: salaryMin ? parseInt(salaryMin, 10) : undefined,
         fullTime,
         permanent,
@@ -64,7 +63,7 @@ export const JobSearchPage: React.FC = () => {
       console.error('Job search API error:', err);
       setErrorMsg(
         err.response?.data?.error?.message ||
-          'Failed to load jobs. Please check if your backend server is running and ADZUNA credentials are set.'
+          'Failed to load jobs. Please check if your backend server is running and ADZUNA environment variables are set.'
       );
     } finally {
       setIsLoading(false);
@@ -72,7 +71,7 @@ export const JobSearchPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchJobs();
+    fetchJobs(page, sortBy);
   }, [page, sortBy]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -86,7 +85,7 @@ export const JobSearchPage: React.FC = () => {
       permanent: permanent ? 'true' : 'false',
       page: '1',
     });
-    fetchJobs();
+    fetchJobs(1, sortBy);
   };
 
   const formatSalary = (min: number | null, max: number | null) => {
@@ -112,11 +111,11 @@ export const JobSearchPage: React.FC = () => {
       <div className="mb-8">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-brand-500/10 text-brand-300 border border-brand-500/20 mb-3">
           <Sparkles className="w-3.5 h-3.5 text-brand-400" />
-          <span>Real-Time Job Database • Adzuna API</span>
+          <span>Real-Time Job Database • India Market (Adzuna API)</span>
         </div>
         <h1 className="text-3xl font-extrabold text-white tracking-tight">Explore Live Career Opportunities</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Search thousands of active software engineering, tech, and corporate positions.
+          Search thousands of active software engineering, tech, and corporate positions across India.
         </p>
       </div>
 
@@ -130,7 +129,7 @@ export const JobSearchPage: React.FC = () => {
               type="text"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
-              placeholder="Job title, keywords, or technology (e.g. React, Developer)"
+              placeholder="Job title, skills, or technology (e.g. React, Developer)"
               className="w-full pl-11 pr-4 py-2.5 bg-slate-900/90 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 text-sm"
             />
           </div>
@@ -142,7 +141,7 @@ export const JobSearchPage: React.FC = () => {
               type="text"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              placeholder="City, region, or 'Remote' (e.g. Delhi, Bengaluru)"
+              placeholder="City or region (e.g. Delhi, Bengaluru, Mumbai)"
               className="w-full pl-11 pr-4 py-2.5 bg-slate-900/90 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 text-sm"
             />
           </div>
@@ -196,7 +195,8 @@ export const JobSearchPage: React.FC = () => {
             <select
               value={sortBy}
               onChange={(e) => {
-                setSortBy(e.target.value as any);
+                const newSort = e.target.value as any;
+                setSortBy(newSort);
                 setPage(1);
               }}
               className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-brand-500 text-xs"
@@ -217,7 +217,7 @@ export const JobSearchPage: React.FC = () => {
             <h4 className="font-bold text-rose-200 mb-1">Job Search Error</h4>
             <p>{errorMsg}</p>
             <button
-              onClick={fetchJobs}
+              onClick={() => fetchJobs(page, sortBy)}
               className="mt-3 px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 font-semibold border border-rose-500/30 transition-colors"
             >
               Try Again
@@ -252,7 +252,7 @@ export const JobSearchPage: React.FC = () => {
               setKeyword('');
               setLocation('');
               setPage(1);
-              fetchJobs();
+              fetchJobs(1, sortBy);
             }}
             className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition-colors"
           >
@@ -368,16 +368,16 @@ export const JobSearchPage: React.FC = () => {
         </div>
       )}
 
-      {/* Mandatory Adzuna Attribution Footer */}
-      <div className="mt-12 pt-6 border-t border-slate-900 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-        <span>Job search powered by</span>
+      {/* Official Adzuna Required Attribution */}
+      <div className="mt-12 pt-6 border-t border-slate-900 text-center text-xs text-slate-400 flex items-center justify-center gap-1.5">
+        <span>Jobs by</span>
         <a
-          href="https://www.adzuna.com"
+          href="https://www.adzuna.in"
           target="_blank"
           rel="noopener noreferrer"
           className="font-bold text-brand-400 hover:underline inline-flex items-center gap-1"
         >
-          Adzuna <ExternalLink className="w-3 h-3" />
+          Adzuna <ExternalLink className="w-3.5 h-3.5" />
         </a>
       </div>
     </div>

@@ -65,7 +65,7 @@ export async function getJobById(req: Request, res: Response, next: NextFunction
       return;
     }
 
-    // Search Adzuna with the job ID or return detailed match
+    // Search Adzuna with the job ID
     const result = await fetchAdzunaJobs({
       keyword: id,
       location: '',
@@ -87,7 +87,10 @@ export async function getJobById(req: Request, res: Response, next: NextFunction
       success: true,
       data: {
         job,
-        attribution: 'Jobs powered by Adzuna',
+        attribution: {
+          text: 'Jobs by Adzuna',
+          link: 'https://www.adzuna.in',
+        },
       },
     });
   } catch (error: any) {

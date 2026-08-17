@@ -71,7 +71,10 @@ export interface StandardJobSearchResponse {
       totalPages: number;
     };
     country: string;
-    attribution: string;
+    attribution: {
+      text: string;
+      link: string;
+    };
   };
   error?: {
     message: string;
@@ -180,7 +183,9 @@ export async function searchJobsApi(params: JobSearchParams): Promise<StandardJo
   return response.data;
 }
 
-export async function getJobDetailsApi(id: string): Promise<{ success: boolean; data: { job: StandardJob; attribution: string } }> {
+export async function getJobDetailsApi(
+  id: string
+): Promise<{ success: boolean; data: { job: StandardJob; attribution: { text: string; link: string } } }> {
   const response = await api.get(`/jobs/${id}`);
   return response.data;
 }
