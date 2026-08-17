@@ -1,0 +1,29 @@
+{
+  "name": "ai-job-portal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Production-grade AI Job Portal with React, Cloudflare Workers, Hono, MongoDB Atlas, and Gemini AI",
+  "scripts": {
+    "dev": "npm run dev --workspace=frontend & npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:backend": "npm run dev --workspace=backend",
+    "build:frontend": "npm run build --workspace=frontend",
+    "build:backend": "npm run build --workspace=backend",
+    "build": "npm run build:frontend && npm run build:backend"
+  },
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "keywords": [
+    "ai",
+    "jobs",
+    "cloudflare-workers",
+    "hono",
+    "react",
+    "typescript",
+    "mongodb"
+  ],
+  "author": "",
+  "license": "ISC"
+}
