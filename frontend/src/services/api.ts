@@ -190,6 +190,28 @@ export interface AIAnalysisResult {
   recommendation: 'strong_match' | 'good_match' | 'partial_match' | 'weak_match';
 }
 
+export interface JobRecommendation {
+  jobId: string;
+  matchScore: number;
+  recommendationReason: string;
+  matchingSkills: string[];
+  missingSkills: string[];
+  highlights: string[];
+  job: StandardJob;
+}
+
+export interface GetRecommendationsResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    recommendations: JobRecommendation[];
+    count: number;
+  };
+  error?: {
+    message: string;
+  };
+}
+
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
@@ -431,5 +453,15 @@ export async function analyzeJobMatchApi(
   error?: { message: string };
 }> {
   const response = await api.post(`/ai/job-match/${jobId}`);
+  return response.data;
+}
+
+// AI Personalized Job Recommendations API Method
+export async function getRecommendationsApi(
+  refresh = false
+): Promise<GetRecommendationsResponse> {
+  const response = await api.get<GetRecommendationsResponse>('/ai/recommendations', {
+    params: refresh ? { refresh: 'true' } : undefined,
+  });
   return response.data;
 }
