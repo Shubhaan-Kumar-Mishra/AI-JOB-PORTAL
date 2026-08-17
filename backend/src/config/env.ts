@@ -15,4 +15,8 @@ export const config = {
   adzunaAppKey: process.env.ADZUNA_APP_KEY || '',
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  resendFromEmail: process.env.RESEND_FROM_EMAIL || '',
+  resendFromName: process.env.RESEND_FROM_NAME || 'AI Job Portal',
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
 };

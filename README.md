@@ -1,6 +1,6 @@
 # AI Job Portal
 
-A production-quality full-stack AI-powered job application platform. Users can build profiles, upload resumes, extract and parse structured candidate data, search real job opportunities powered by the Adzuna API, save job positions, track job applications across workflow stages, and receive Google Gemini AI compatibility scores and detailed match assessments.
+A production-quality full-stack AI-powered job application platform. Users can build profiles, upload resumes, extract and parse structured candidate data, search real job opportunities powered by the Adzuna API, save job positions, track job applications across workflow stages, receive Resend transactional email notifications, and receive Google Gemini AI compatibility scores and detailed match assessments.
 
 ---
 
@@ -26,6 +26,7 @@ A production-quality full-stack AI-powered job application platform. Users can b
 - **Job Search Provider**: Adzuna API (India Market `in`)
 - **Text Extraction**: `pdf-parse` (PDF) & `mammoth` (DOCX) in-memory
 - **AI Engine**: Google Gemini API (`@google/genai` SDK, Model: `gemini-2.5-flash`)
+- **Transactional Email**: Resend (`resend` SDK v6.x)
 
 ---
 
@@ -35,15 +36,95 @@ Copy `.env.example` to `backend/.env` and populate all values:
 
 ```
 PORT=5001
-MONGODB_URI=            # MongoDB Atlas or local connection string
-JWT_SECRET=             # Random 32+ character secret
-ADZUNA_APP_ID=          # From https://developer.adzuna.com
-ADZUNA_APP_KEY=         # From https://developer.adzuna.com
-GEMINI_API_KEY=         # From https://aistudio.google.com/app/apikey
+MONGODB_URI=           # MongoDB Atlas or local connection string
+JWT_SECRET=            # Random 32+ character secret
+ADZUNA_APP_ID=         # From https://developer.adzuna.com
+ADZUNA_APP_KEY=        # From https://developer.adzuna.com
+GEMINI_API_KEY=        # From https://aistudio.google.com/app/apikey
 GEMINI_MODEL=gemini-2.5-flash
+RESEND_API_KEY=        # From https://resend.com/api-keys
+RESEND_FROM_EMAIL=     # Must be a verified sender/domain in Resend
+RESEND_FROM_NAME=AI Job Portal
+FRONTEND_URL=http://localhost:5173
 ```
 
-> **IMPORTANT**: Never commit `.env` or `backend/.env`. These files are in `.gitignore`. The `.env.example` files contain only empty placeholders.
+> **IMPORTANT**: Never commit `.env` or `backend/.env`. These files are in `.gitignore`. The `.env.example` files contain only empty placeholders — no real credentials are ever committed.
+
+---
+
+## 📧 Stage 7 — Resend Transactional Email Notifications
+
+### **Overview**
+
+Transactional emails are sent automatically on two events:
+
+| Event | Trigger | Email Subject |
+|-------|---------|---------------|
+| Application Created | `POST /api/applications` → MongoDB save succeeds | `Application Submitted — {jobTitle}` |
+| Status Changed | `PATCH /api/applications/:id` → status actually changes | `Application Status Updated — {jobTitle}` |
+
+### **Email Events**
+
+#### 1. Application Confirmation
+- **Trigger**: Successful application creation.
+- **Content**: Job title, company, location, application date, status badge, CTA button linking to `/applications/{applicationId}`.
+- **Does NOT trigger**: Duplicate applications (409), read requests (GET), notes-only updates.
+
+#### 2. Application Status Update
+- **Trigger**: `PATCH /api/applications/:id` where `newStatus !== oldStatus`.
+- **Content**: Job title, company, previous status, new status, updated timestamp, CTA button.
+- **Does NOT trigger**: Same-status updates, notes-only updates, delete operations.
+
+### **Email Failure Behavior**
+
+> **Critical Design Rule**: Email failure NEVER breaks a successful database operation.
+
+If MongoDB saves the application but Resend fails:
+- The application remains saved in MongoDB.
+- The API returns HTTP 201 with `success: true`.
+- The response includes `emailNotification: { sent: false }`.
+- The failure is safely logged server-side (no credentials or user data logged).
+- Raw Resend error details are NEVER exposed to the frontend.
+
+### **Idempotency**
+
+| Email Type | Idempotency Key |
+|------------|----------------|
+| Application confirmation | `application-created:{applicationId}` |
+| Status change | `application-status:{applicationId}:{oldStatus}:{newStatus}` |
+
+Idempotency keys prevent duplicate emails when requests are retried.
+
+### **Sender Verification**
+
+The `RESEND_FROM_EMAIL` sender **must be verified** in your Resend dashboard. If the sender is unverified:
+- The email service detects the 422/unverified error from Resend.
+- It logs `resend_sender_unverified` safely (no key logged).
+- The application operation proceeds and succeeds.
+
+> For local development testing: Use a Resend-verified sender email. If using the `@example.com` placeholder, Resend will reject the send — the application is still saved correctly.
+
+### **Security Properties**
+
+- **Recipient**: Always fetched from MongoDB using the authenticated JWT `userId` — never from request body.
+- **API key**: Never logged, never returned in any API response, only used server-side.
+- **Rate limiting**: Inherits per-endpoint protections. No email sent on GET requests.
+- **No PII in logs**: Logs contain only non-sensitive event names (e.g., `resend_auth_error`).
+
+### **Local Testing Instructions**
+
+1. Add your credentials to `backend/.env`:
+   ```
+   RESEND_API_KEY=re_...
+   RESEND_FROM_EMAIL=your_verified@email.com
+   RESEND_FROM_NAME=AI Job Portal
+   FRONTEND_URL=http://localhost:5173
+   ```
+2. Start backend: `npm run dev:backend`
+3. Register a user with a real email address.
+4. Create an application via `POST /api/applications`.
+5. Update status via `PATCH /api/applications/:id` with `{ "status": "interview" }`.
+6. Check your inbox for both emails.
 
 ---
 
@@ -58,7 +139,6 @@ Authorization: Bearer <token>
 
 - **Protected**: Requires valid JWT.
 - **Pre-requisite**: Candidate must have an uploaded resume (returns `HTTP 400` if missing).
-- **Input**: Only `jobId` path parameter — the backend fetches job data independently from Adzuna.
 - **Rate Limit**: 10 requests per 15-minute window per user.
 
 #### **Response Structure**
@@ -83,17 +163,6 @@ Authorization: Bearer <token>
 }
 ```
 
-#### **Error HTTP Status Codes**
-| Code | Meaning |
-|------|---------|
-| 400  | No resume uploaded |
-| 401  | Unauthenticated |
-| 404  | Job not found on Adzuna |
-| 429  | Rate limit exceeded or duplicate in-progress request |
-| 500  | Gemini API key or model configuration error |
-| 502  | Gemini returned malformed/invalid response |
-| 504  | Gemini request timed out |
-
 ---
 
 ## 🔒 Security Architecture
@@ -102,47 +171,18 @@ Authorization: Bearer <token>
 > *"This score is an AI-generated estimate based on the information in your resume and this job listing. It is not a hiring prediction."*
 
 ### **Prompt Injection Protection**
-The job description from Adzuna is **UNTRUSTED EXTERNAL CONTENT**. It is:
-- Clearly delimited in the Gemini prompt with explicit `[BEGIN UNTRUSTED JOB DESCRIPTION]` / `[END UNTRUSTED JOB DESCRIPTION]` markers.
-- System instructions explicitly instruct the model to treat any text in that section as **data to analyze**, never as model instructions.
-- Any injection text (e.g., *"Ignore all previous instructions"*) is treated as suspicious job description content, not as a command.
+Job descriptions are treated as UNTRUSTED EXTERNAL CONTENT, explicitly delimited in the Gemini prompt and instructed to be treated as data-only.
 
 ### **Sensitive Data Controls**
-The AI endpoint never sends to Gemini: passwords, JWT tokens, MongoDB URI, API keys, phone numbers, email addresses, or raw resume file buffers. Only structured, job-relevant resume fields are passed (skills, education, experience summary, projects).
-
-API responses never contain: Gemini API key, Gemini model name/prompt, MongoDB internal fields (`_id`, `__v`), raw resume text, or stack traces.
+No passwords, JWT tokens, MongoDB URIs, API keys, phone numbers, emails, or raw resume file buffers are ever sent to Gemini or returned to the frontend.
 
 ### **Resume Ownership**
-`userId` is derived **exclusively** from the authenticated JWT (`req.user.id`). The frontend cannot specify or override which resume is used. A user can never access another user's resume.
+`userId` is derived **exclusively** from the authenticated JWT. A user can never access another user's resume.
 
-### **Rate Limiting**
-- **Per-user in-memory rate limiter**: 10 AI requests per 15-minute window.
-- **Duplicate request lock**: If an AI analysis for the same `userId + jobId` is already in progress, subsequent requests return `HTTP 429` immediately (prevents runaway Gemini quota consumption from accidental double-clicks).
-
-> **Production Note**: The current rate limiter is in-process memory only. For horizontally-scaled production deployments, replace with a distributed solution (e.g., Redis-backed `rate-limiter-flexible` or Upstash Redis).
-
-### **Input Size Limits**
-All resume and job data is truncated before being sent to Gemini:
-- Resume summary: 600 chars
-- Skills: max 30, each 80 chars
-- Education/Experience/Projects: max 10 entries each
-- Job description: 2000 chars (prevents enormous raw descriptions)
-- Entry descriptions: 400 chars each
-
-### **Retry Policy**
-- Maximum 2 attempts total (1 retry on transient failure).
-- **Never retried**: Auth errors, rate limit errors, unsupported model errors, invalid request errors, or schema validation errors.
-- **May retry once**: Temporary network failures or transient server errors.
-
-### **Gemini Error Classification**
-| Error Type | HTTP Code | Retried? |
-|------------|-----------|----------|
-| GeminiAuthError (invalid key) | 500 | ❌ Never |
-| GeminiRateLimitError | 429 | ❌ Never |
-| GeminiModelError (bad model) | 500 | ❌ Never |
-| GeminiValidationError (bad schema) | 502 | ❌ Never |
-| GeminiTimeoutError | 504 | ✅ Once |
-| Transient network failure | 500 | ✅ Once |
+### **Email Security**
+- Recipient email always fetched from MongoDB using JWT `userId`.
+- `RESEND_API_KEY` never logged, returned, or exposed.
+- Raw error messages from Resend never forwarded to the client.
 
 ---
 

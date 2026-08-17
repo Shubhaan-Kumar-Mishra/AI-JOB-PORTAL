@@ -1,14 +1,27 @@
 import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../middleware/authMiddleware.js';
-import { Application } from '../models/Application.js';
+import { Application, ApplicationStatus } from '../models/Application.js';
 import { SavedJob } from '../models/SavedJob.js';
+import { User } from '../models/User.js';
 import { createApplicationSchema, updateApplicationSchema } from '../validators/applicationValidators.js';
 import { fetchAdzunaJobs } from '../services/adzuna.service.js';
+import {
+  sendApplicationConfirmationEmail,
+  sendApplicationStatusEmail,
+} from '../services/email.service.js';
 import { ZodError } from 'zod';
 
 /**
  * POST /api/applications
  * Protected endpoint to record a job application.
+ *
+ * Order of operations:
+ * 1. Authenticate user (from JWT only)
+ * 2. Validate request
+ * 3. Check duplicate
+ * 4. Optionally enrich job metadata from Adzuna
+ * 5. Create application in MongoDB — this is the primary operation
+ * 6. Attempt to send confirmation email — failure MUST NOT roll back the application
  */
 export async function createApplication(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -54,7 +67,7 @@ export async function createApplication(req: AuthenticatedRequest, res: Response
           location = matchedJob.location.displayName;
           jobUrl = matchedJob.url;
         }
-      } catch (err) {
+      } catch {
         jobTitle = jobTitle || 'Job Position';
         companyName = companyName || 'Company Not Specified';
         location = location || 'India';
@@ -62,6 +75,7 @@ export async function createApplication(req: AuthenticatedRequest, res: Response
       }
     }
 
+    // ── PRIMARY OPERATION: Save application to MongoDB ─────────────────────────
     const application = await Application.create({
       userId,
       jobId,
@@ -74,10 +88,38 @@ export async function createApplication(req: AuthenticatedRequest, res: Response
       appliedAt: new Date(),
     });
 
+    // ── SECONDARY OPERATION: Send confirmation email (fire-and-forget safe) ────
+    // Email failure MUST NOT affect the already-saved application response.
+    // Recipient is fetched from MongoDB using the authenticated userId — NEVER from request body.
+    let emailNotification: { sent: boolean; reason?: string } = { sent: false, reason: 'not_attempted' };
+    try {
+      const userDoc = await User.findById(userId).select('name email').lean();
+      if (userDoc?.email) {
+        emailNotification = await sendApplicationConfirmationEmail({
+          recipientEmail: userDoc.email,
+          candidateName: userDoc.name || 'Candidate',
+          applicationId: (application._id as any).toString(),
+          jobTitle: application.jobTitle,
+          companyName: application.companyName,
+          location: application.location,
+          appliedAt: application.appliedAt,
+        });
+      } else {
+        emailNotification = { sent: false, reason: 'no_user_email' };
+      }
+    } catch (emailErr: any) {
+      // Safe log — no credentials or user data content logged
+      console.warn('[ApplicationController] Confirmation email exception:', emailErr?.message || 'unknown');
+      emailNotification = { sent: false, reason: 'email_exception' };
+    }
+
     res.status(201).json({
       success: true,
       message: 'Application recorded successfully',
-      data: { application },
+      data: {
+        application,
+        emailNotification: { sent: emailNotification.sent },
+      },
     });
   } catch (error: any) {
     if (error instanceof ZodError) {
@@ -104,6 +146,7 @@ export async function createApplication(req: AuthenticatedRequest, res: Response
 /**
  * GET /api/applications
  * Protected endpoint to list candidate's tracked job applications.
+ * No email is sent on read operations.
  */
 export async function getApplications(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -134,12 +177,7 @@ export async function getApplications(req: AuthenticatedRequest, res: Response, 
       success: true,
       data: {
         applications,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages,
-        },
+        pagination: { page, limit, total, totalPages },
       },
     });
   } catch (error) {
@@ -151,6 +189,7 @@ export async function getApplications(req: AuthenticatedRequest, res: Response, 
  * GET /api/applications/:id
  * Protected endpoint to retrieve single application details.
  * Strictly verifies ownership so User A cannot access User B's application.
+ * No email is sent on read operations.
  */
 export async function getApplicationById(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -172,10 +211,7 @@ export async function getApplicationById(req: AuthenticatedRequest, res: Respons
       return;
     }
 
-    res.status(200).json({
-      success: true,
-      data: { application },
-    });
+    res.status(200).json({ success: true, data: { application } });
   } catch (error: any) {
     if (error.name === 'CastError') {
       res.status(400).json({ success: false, error: { message: 'Invalid application ID format' } });
@@ -188,7 +224,11 @@ export async function getApplicationById(req: AuthenticatedRequest, res: Respons
 /**
  * PATCH /api/applications/:id
  * Protected endpoint to update status or notes of an application.
- * Strictly enforces ownership & prevents modification of immutable fields.
+ *
+ * Email behavior:
+ * - Status changes (oldStatus !== newStatus) → send status update email.
+ * - Notes-only changes → NO email sent.
+ * - Email failure MUST NOT prevent a successful update response.
  */
 export async function updateApplication(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -202,14 +242,27 @@ export async function updateApplication(req: AuthenticatedRequest, res: Response
 
     const validatedBody = updateApplicationSchema.parse(req.body);
 
+    // ── Capture oldStatus BEFORE the update ────────────────────────────────────
+    const existingApp = await Application.findOne({ _id: applicationId, userId }).lean();
+    if (!existingApp) {
+      res.status(404).json({
+        success: false,
+        error: { message: 'Application record not found or access denied' },
+      });
+      return;
+    }
+    const oldStatus = existingApp.status as ApplicationStatus;
+
     const updateFields: any = {};
     if (validatedBody.status !== undefined) updateFields.status = validatedBody.status;
     if (validatedBody.notes !== undefined) updateFields.notes = validatedBody.notes;
 
-    const updated = await Application.findOneAndUpdate({ _id: applicationId, userId }, updateFields, {
-      new: true,
-      runValidators: true,
-    }).lean();
+    // ── PRIMARY OPERATION: Update application in MongoDB ───────────────────────
+    const updated = await Application.findOneAndUpdate(
+      { _id: applicationId, userId },
+      updateFields,
+      { new: true, runValidators: true }
+    ).lean();
 
     if (!updated) {
       res.status(404).json({
@@ -219,10 +272,40 @@ export async function updateApplication(req: AuthenticatedRequest, res: Response
       return;
     }
 
+    const newStatus = updated.status as ApplicationStatus;
+    const statusChanged = validatedBody.status !== undefined && oldStatus !== newStatus;
+
+    // ── SECONDARY OPERATION: Send status change email only if status actually changed ──
+    let emailNotification: { sent: boolean } = { sent: false };
+    if (statusChanged) {
+      try {
+        // Recipient fetched from MongoDB using JWT userId — NEVER from request body
+        const userDoc = await User.findById(userId).select('name email').lean();
+        if (userDoc?.email) {
+          const emailResult = await sendApplicationStatusEmail({
+            recipientEmail: userDoc.email,
+            candidateName: userDoc.name || 'Candidate',
+            applicationId: applicationId,
+            jobTitle: updated.jobTitle,
+            companyName: updated.companyName,
+            oldStatus,
+            newStatus,
+            updatedAt: updated.updatedAt,
+          });
+          emailNotification = { sent: emailResult.sent };
+        }
+      } catch (emailErr: any) {
+        console.warn('[ApplicationController] Status email exception:', emailErr?.message || 'unknown');
+      }
+    }
+
     res.status(200).json({
       success: true,
       message: 'Application updated successfully',
-      data: { application: updated },
+      data: {
+        application: updated,
+        ...(statusChanged ? { emailNotification } : {}),
+      },
     });
   } catch (error: any) {
     if (error instanceof ZodError) {
@@ -246,7 +329,7 @@ export async function updateApplication(req: AuthenticatedRequest, res: Response
 /**
  * DELETE /api/applications/:id
  * Protected endpoint to delete an application record.
- * Strictly verifies ownership.
+ * No email is sent on deletion.
  */
 export async function deleteApplication(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -285,6 +368,7 @@ export async function deleteApplication(req: AuthenticatedRequest, res: Response
 /**
  * GET /api/users/dashboard-stats
  * Protected endpoint to compute live counts for Candidate Dashboard.
+ * No email is sent.
  */
 export async function getDashboardStats(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -303,12 +387,7 @@ export async function getDashboardStats(req: AuthenticatedRequest, res: Response
 
     res.status(200).json({
       success: true,
-      data: {
-        savedJobsCount,
-        applicationsCount,
-        interviewsCount,
-        offersCount,
-      },
+      data: { savedJobsCount, applicationsCount, interviewsCount, offersCount },
     });
   } catch (error) {
     next(error);
