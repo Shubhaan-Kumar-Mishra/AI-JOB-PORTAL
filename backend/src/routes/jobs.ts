@@ -1,11 +1,10 @@
-import { Hono } from 'hono';
-import { Bindings } from '../config/env.js';
+import { Router, Request, Response } from 'express';
 
-export const jobsRouter = new Hono<{ Bindings: Bindings }>();
+export const jobsRouter = Router();
 
-jobsRouter.get('/status', (c) => {
-  return c.json({
+jobsRouter.get('/status', (req: Request, res: Response) => {
+  res.json({
     success: true,
-    message: 'Jobs search & recommendation service initialized (Foundation Stage)',
+    message: 'Jobs search & recommendation service initialized (Node.js + Express Foundation Stage)',
   });
 });

@@ -1,43 +1,71 @@
-import { MongoClient, Db } from 'mongodb';
-import { Bindings, getEnvVar } from '../config/env.js';
-
-let cachedClient: MongoClient | null = null;
-let cachedDb: Db | null = null;
+import mongoose from 'mongoose';
+import { config } from '../config/env.js';
 
 /**
- * Service layer for managing MongoDB Atlas database connections.
- * Compatible with Cloudflare Workers (requires `nodejs_compat` flag in wrangler config).
+ * Connects to MongoDB Atlas using Mongoose.
  */
-export async function getDatabase(env: Bindings): Promise<Db> {
-  const uri = getEnvVar(env, 'MONGODB_URI');
-
-  if (!uri) {
-    throw new Error('MONGODB_URI is not configured in environment variables.');
-  }
-
-  if (cachedDb && cachedClient) {
-    return cachedDb;
+export async function connectDB(): Promise<typeof mongoose | null> {
+  if (!config.mongoUri) {
+    console.warn('⚠️ MONGODB_URI is not set in environment variables.');
+    return null;
   }
 
   try {
-    const client = new MongoClient(uri);
-    await client.connect();
-    cachedClient = client;
-    cachedDb = client.db('ai_job_portal');
-    return cachedDb;
+    const conn = await mongoose.connect(config.mongoUri, {
+      serverSelectionTimeoutMS: 5000,
+    });
+    console.log(`✅ MongoDB Atlas connected successfully: ${conn.connection.host}`);
+    return conn;
   } catch (error) {
-    console.error('Failed to connect to MongoDB Atlas:', error);
-    throw new Error('Database connection failed. Please check your MONGODB_URI configuration.');
+    console.error('❌ MongoDB Atlas connection error:', error);
+    return null;
   }
 }
 
 /**
- * Closes the active MongoDB connection if initialized.
+ * Tests active MongoDB Atlas connectivity by pinging the database admin API.
  */
-export async function closeDatabaseConnection(): Promise<void> {
-  if (cachedClient) {
-    await cachedClient.close();
-    cachedClient = null;
-    cachedDb = null;
+export async function checkDBHealth(): Promise<{
+  connected: boolean;
+  message: string;
+  details?: Record<string, any>;
+}> {
+  if (!config.mongoUri) {
+    return {
+      connected: false,
+      message: 'MONGODB_URI environment variable is missing.',
+    };
+  }
+
+  try {
+    // If not connected yet, attempt connection
+    if (mongoose.connection.readyState !== 1) {
+      await mongoose.connect(config.mongoUri, {
+        serverSelectionTimeoutMS: 5000,
+      });
+    }
+
+    if (!mongoose.connection.db) {
+      throw new Error('Database connection instance is undefined');
+    }
+
+    // Actually test connectivity by sending a ping command to MongoDB Atlas
+    const pingResult = await mongoose.connection.db.admin().ping();
+
+    return {
+      connected: true,
+      message: 'MongoDB Atlas is connected and healthy',
+      details: {
+        host: mongoose.connection.host,
+        dbName: mongoose.connection.name,
+        readyState: mongoose.connection.readyState,
+        ping: pingResult,
+      },
+    };
+  } catch (error: any) {
+    return {
+      connected: false,
+      message: `MongoDB Atlas connection check failed: ${error.message || error}`,
+    };
   }
 }

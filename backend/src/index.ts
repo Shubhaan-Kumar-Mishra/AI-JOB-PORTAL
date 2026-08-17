@@ -1,53 +1,54 @@
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { Bindings } from './config/env.js';
+import express, { Request, Response } from 'express';
+import cors from 'cors';
+import { config } from './config/env.js';
+import { connectDB } from './db/mongodb.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
 import { jobsRouter } from './routes/jobs.js';
 import { resumeRouter } from './routes/resume.js';
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = express();
 
-// Enable CORS for frontend client
-app.use(
-  '*',
-  cors({
-    origin: '*',
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
-  })
-);
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Register centralized error handler
-app.onError(errorHandler);
+// Mount API Routers
+app.use('/api/health', healthRouter);
+app.use('/api/auth', authRouter);
+app.use('/api/jobs', jobsRouter);
+app.use('/api/resume', resumeRouter);
 
-// Mount API routes
-app.route('/api/health', healthRouter);
-app.route('/api/auth', authRouter);
-app.route('/api/jobs', jobsRouter);
-app.route('/api/resume', resumeRouter);
-
-// Root route
-app.get('/', (c) => {
-  return c.json({
-    name: 'AI Job Portal API',
+// Root Endpoint
+app.get('/', (req: Request, res: Response) => {
+  res.json({
+    name: 'AI Job Portal API (Node.js + Express)',
     version: '1.0.0',
     documentation: '/api/health',
   });
 });
 
 // 404 Handler
-app.notFound((c) => {
-  return c.json(
-    {
-      success: false,
-      error: {
-        message: `Route not found: ${c.req.method} ${c.req.url}`,
-      },
+app.use((req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    error: {
+      message: `Route not found: ${req.method} ${req.originalUrl}`,
     },
-    404
-  );
+  });
+});
+
+// Centralized Error Handler
+app.use(errorHandler);
+
+// Start Server & Connect Database
+const PORT = config.port;
+
+app.listen(PORT, async () => {
+  console.log(`🚀 Express server running locally on http://localhost:${PORT}`);
+  await connectDB();
 });
 
 export default app;

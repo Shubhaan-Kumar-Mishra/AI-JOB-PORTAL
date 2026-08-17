@@ -1,6 +1,6 @@
 # AI Job Portal
 
-A production-quality full-stack AI-powered job application platform. Users can build profiles, upload resumes, search real job opportunities powered by the Adzuna API, receive Google Gemini AI compatibility scores and skill gap analyses, track applications, and receive email notifications.
+A production-quality full-stack AI-powered job application platform built for local development and testing. Users can build profiles, upload resumes, search real job opportunities powered by the Adzuna API, receive Google Gemini AI compatibility scores and skill gap analyses, track applications, and receive email notifications.
 
 ---
 
@@ -14,13 +14,13 @@ A production-quality full-stack AI-powered job application platform. Users can b
 - **HTTP Client**: Axios
 
 ### **Backend**
-- **Runtime**: Cloudflare Workers (Edge V8 Isolates)
-- **Framework**: Hono
+- **Runtime**: Node.js
+- **Framework**: Express.js
 - **Language**: TypeScript
-- **Deployment**: Wrangler CLI
+- **Dev Runner**: `tsx` (TypeScript Execution Engine)
 
-### **Database & Services (Integrated in future stages)**
-- **Database**: MongoDB Atlas (Node Client / Fetch architecture)
+### **Database & Services**
+- **Database**: MongoDB Atlas (via Mongoose)
 - **Job Search API**: Adzuna API
 - **AI Engine**: Google Gemini API
 - **Email Service**: Resend API
@@ -34,29 +34,28 @@ ai-job-portal/
 ├── .env.example              # Centralized environment variable template
 ├── .gitignore                # Workspace git ignore configuration
 ├── package.json              # Monorepo root script runner & workspace definitions
-├── README.md                 # Complete documentation & setup guide
+├── README.md                 # Technical documentation & setup guide
 ├── backend/
 │   ├── .env.example          # Backend environment variables
-│   ├── package.json          # Cloudflare Worker dependencies
-│   ├── tsconfig.json         # Worker TypeScript configuration
-│   ├── wrangler.jsonc        # Cloudflare Workers deployment config
+│   ├── package.json          # Node.js + Express dependencies
+│   ├── tsconfig.json         # Backend TypeScript configuration
 │   └── src/
-│       ├── index.ts          # Main worker entry point with CORS & routes
+│       ├── index.ts          # Main Express server entry point
 │       ├── config/
-│       │   └── env.ts        # Environment variable bindings & type safety
+│       │   └── env.ts        # Environment variable loader (dotenv)
 │       ├── db/
-│       │   └── mongodb.ts    # MongoDB Atlas connection & client service
+│       │   └── mongodb.ts    # MongoDB Atlas Mongoose connection & health check service
 │       ├── middleware/
-│       │   └── error-handler.ts # Centralized error middleware
+│       │   └── error-handler.ts # Express error handler middleware
 │       └── routes/
-│           ├── health.ts     # Health check endpoint (/api/health)
+│           ├── health.ts     # Health endpoints (/api/health and /api/health/db)
 │           ├── auth.ts       # Auth route placeholder
 │           ├── jobs.ts       # Job search route placeholder
 │           └── resume.ts     # AI resume analysis placeholder
 └── frontend/
     ├── package.json          # React frontend dependencies
     ├── tsconfig.json         # React TypeScript configuration
-    ├── vite.config.ts        # Vite configuration & dev API proxy
+    ├── vite.config.ts        # Vite configuration & dev API proxy (-> http://localhost:5000)
     ├── tailwind.config.js    # Design system tokens & colors
     ├── postcss.config.js     # PostCSS configuration
     ├── index.html            # Entry HTML with Inter typography & metadata
@@ -65,7 +64,7 @@ ai-job-portal/
         ├── App.tsx           # Router configuration
         ├── index.css         # Tailwind directives & glassmorphism utilities
         ├── services/
-        │   └── api.ts        # Axios API client & health check method
+        │   └── api.ts        # Axios API client & health check service
         ├── components/
         │   ├── Navbar.tsx    # Header with API status indicator
         │   ├── Footer.tsx    # Footer with architecture tags
@@ -81,7 +80,7 @@ ai-job-portal/
 
 ## 🔑 Environment Variables
 
-Copy `.env.example` to `.env` in both the workspace root and `backend/` directory:
+Copy `.env.example` to `.env` in the workspace root and/or `backend/`:
 
 ```bash
 cp .env.example .env
@@ -90,6 +89,7 @@ cp .env.example backend/.env
 
 | Variable | Description |
 |---|---|
+| `PORT` | Local Express Server Port (Default: `5000`) |
 | `MONGODB_URI` | MongoDB Atlas Connection String (`mongodb+srv://...`) |
 | `JWT_SECRET` | Secret key for JWT token signing |
 | `ADZUNA_APP_ID` | Adzuna Jobs API Application ID |
@@ -97,20 +97,17 @@ cp .env.example backend/.env
 | `GEMINI_API_KEY` | Google Gemini AI API Key |
 | `RESEND_API_KEY` | Resend Email API Key |
 
-*Note: Secrets must be supplied via environment variables; never hardcode credentials.*
-
 ---
 
 ## 🛠️ Local Setup & Quick Start
 
 ### **1. Install Dependencies**
-Install packages for the entire monorepo from the root directory:
 ```bash
 npm install
 ```
 
 ### **2. Start Development Servers**
-Run both Frontend (Vite) and Backend (Cloudflare Workers via Wrangler) concurrently:
+Run both Frontend (Vite) and Backend (Express) concurrently:
 ```bash
 npm run dev
 ```
@@ -120,37 +117,34 @@ Or start individual services independently:
   ```bash
   npm run dev:frontend
   ```
-- **Backend only** (`http://localhost:8787`):
+- **Backend only** (`http://localhost:5000`):
   ```bash
   npm run dev:backend
   ```
 
 ---
 
-## 📡 Health Check Endpoint
+## 📡 Health Endpoints
 
-Once the backend is running, verify API status at `http://localhost:8787/api/health` or `http://localhost:5173/api/health` (via Vite proxy):
+- **API Health**: `GET http://localhost:5000/api/health`
+  ```json
+  {
+    "success": true,
+    "message": "AI Job Portal API is running",
+    "timestamp": "2026-08-17T21:48:00.000Z",
+    "version": "1.0.0"
+  }
+  ```
 
-```json
-{
-  "success": true,
-  "message": "AI Job Portal API is running",
-  "timestamp": "2026-08-17T21:24:00.000Z",
-  "version": "1.0.0"
-}
-```
-
----
-
-## 📌 Current Implementation Status (Stage 1: Foundation)
-
-- [x] Monorepo workspace configuration with npm workspaces
-- [x] Cloudflare Workers + Hono backend setup with Wrangler config
-- [x] Centralized error handling and CORS middleware
-- [x] Working `/api/health` health check endpoint
-- [x] Environment variable binding abstractions (`backend/src/config/env.ts`)
-- [x] Modular MongoDB Atlas connection service layer (`backend/src/db/mongodb.ts`)
-- [x] React + Vite + TypeScript + Tailwind CSS frontend application setup
-- [x] React Router setup with Landing, Login, Register, and Dashboard routes
-- [x] Axios API integration layer
-- [x] Git repository initialization
+- **MongoDB Atlas Connection Health**: `GET http://localhost:5000/api/health/db`
+  ```json
+  {
+    "success": true,
+    "message": "MongoDB Atlas is connected and healthy",
+    "database": {
+      "host": "cluster0.xxx.mongodb.net",
+      "dbName": "ai_job_portal",
+      "readyState": 1
+    }
+  }
+  ```

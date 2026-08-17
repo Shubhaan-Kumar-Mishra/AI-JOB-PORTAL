@@ -1,24 +1,25 @@
-import { ErrorHandler } from 'hono';
-import { Bindings } from '../config/env.js';
+import { Request, Response, NextFunction } from 'express';
+import { config } from '../config/env.js';
 
 /**
- * Centralized Error Handler Middleware for Hono
- * Ensures consistent JSON error responses across all API endpoints.
+ * Centralized Error Handling Middleware for Express
  */
-export const errorHandler: ErrorHandler<{ Bindings: Bindings }> = (err, c) => {
-  console.error(`[API Error] ${c.req.method} ${c.req.url}:`, err);
+export function errorHandler(
+  err: any,
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  console.error(`[API Error] ${req.method} ${req.originalUrl}:`, err);
 
-  const status = 'status' in err && typeof err.status === 'number' ? err.status : 500;
+  const status = typeof err.status === 'number' ? err.status : 500;
   const message = err.message || 'Internal Server Error';
 
-  return c.json(
-    {
-      success: false,
-      error: {
-        message,
-        ...(process.env.NODE_ENV === 'development' ? { stack: err.stack } : {}),
-      },
+  res.status(status).json({
+    success: false,
+    error: {
+      message,
+      ...(config.nodeEnv === 'development' ? { stack: err.stack } : {}),
     },
-    status as any
-  );
-};
+  });
+}

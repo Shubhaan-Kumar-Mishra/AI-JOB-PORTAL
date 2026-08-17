@@ -1,11 +1,10 @@
-import { Hono } from 'hono';
-import { Bindings } from '../config/env.js';
+import { Router, Request, Response } from 'express';
 
-export const authRouter = new Hono<{ Bindings: Bindings }>();
+export const authRouter = Router();
 
-authRouter.get('/status', (c) => {
-  return c.json({
+authRouter.get('/status', (req: Request, res: Response) => {
+  res.json({
     success: true,
-    message: 'Auth service initialized (Foundation Stage)',
+    message: 'Auth service initialized (Node.js + Express Foundation Stage)',
   });
 });
