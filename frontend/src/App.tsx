@@ -12,6 +12,7 @@ import { JobDetailsPage } from './pages/JobDetailsPage';
 import { SavedJobsPage } from './pages/SavedJobsPage';
 import { ApplicationsPage } from './pages/ApplicationsPage';
 import { ApplicationDetailsPage } from './pages/ApplicationDetailsPage';
+import { ResumePage } from './pages/ResumePage';
 
 export const App: React.FC = () => {
   return (
@@ -55,6 +56,14 @@ export const App: React.FC = () => {
               element={
                 <ProtectedRoute>
                   <ApplicationDetailsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="resume"
+              element={
+                <ProtectedRoute>
+                  <ResumePage />
                 </ProtectedRoute>
               }
             />

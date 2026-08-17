@@ -134,6 +134,49 @@ export interface DashboardStats {
   offersCount: number;
 }
 
+export interface ParsedEducation {
+  institution: string | null;
+  degree: string | null;
+  field: string | null;
+  startDate: string | null;
+  endDate: string | null;
+}
+
+export interface ParsedExperience {
+  company: string | null;
+  position: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  description: string | null;
+}
+
+export interface ParsedProject {
+  name: string | null;
+  description: string | null;
+  technologies: string[];
+}
+
+export interface ParsedResumeData {
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  location: string | null;
+  summary: string | null;
+  skills: string[];
+  education: ParsedEducation[];
+  experience: ParsedExperience[];
+  projects: ParsedProject[];
+}
+
+export interface ResumeItem {
+  id: string;
+  fileName: string;
+  fileType: 'pdf' | 'docx';
+  fileSize: number;
+  parsedData: ParsedResumeData;
+  uploadedAt: string;
+}
+
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
@@ -317,5 +360,47 @@ export async function getDashboardStatsApi(): Promise<{
   data: DashboardStats;
 }> {
   const response = await api.get('/users/dashboard-stats');
+  return response.data;
+}
+
+// Resume API Methods
+export async function uploadResumeApi(
+  formData: FormData
+): Promise<{ success: boolean; message: string; data: { resume: ResumeItem } }> {
+  const response = await api.post('/resume', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+}
+
+export async function getResumeApi(): Promise<{
+  success: boolean;
+  data: { resume: ResumeItem };
+}> {
+  const response = await api.get('/resume');
+  return response.data;
+}
+
+export async function deleteResumeApi(): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  const response = await api.delete('/resume');
+  return response.data;
+}
+
+export async function getResumeStatusApi(): Promise<{
+  success: boolean;
+  data: {
+    hasResume: boolean;
+    fileName?: string;
+    fileType?: string;
+    fileSize?: number;
+    uploadedAt?: string;
+  };
+}> {
+  const response = await api.get('/resume/status');
   return response.data;
 }
