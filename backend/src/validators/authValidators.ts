@@ -52,7 +52,7 @@ export const profileUpdateSchema = z.object({
   skills: z.array(z.string().trim()).optional(),
   education: z.array(educationItemSchema).optional(),
   experience: z.array(experienceItemSchema).optional(),
-});
+}).passthrough();
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;

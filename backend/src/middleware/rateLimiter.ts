@@ -30,7 +30,7 @@ export function createRateLimiter(options: RateLimitOptions) {
   const requestLog = new Map<string, number[]>();
 
   // Periodically clear stale entries to prevent unbounded map growth
-  setInterval(() => {
+  const timer = setInterval(() => {
     const cutoff = Date.now() - windowMs;
     for (const [key, timestamps] of requestLog) {
       const recent = timestamps.filter((t) => t > cutoff);
@@ -41,6 +41,11 @@ export function createRateLimiter(options: RateLimitOptions) {
       }
     }
   }, windowMs * 2);
+
+  // Unref timer so Node process is not blocked from unref/exiting
+  if (timer.unref) {
+    timer.unref();
+  }
 
   return function rateLimiterMiddleware(req: Request, res: Response, next: NextFunction): void {
     // Use JWT userId when available (more accurate), fallback to IP

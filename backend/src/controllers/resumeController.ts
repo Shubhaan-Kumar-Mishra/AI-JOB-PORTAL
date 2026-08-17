@@ -6,6 +6,7 @@ import {
   extractTextFromDocxBuffer,
   parseResumeText,
 } from '../services/resumeParser.service.js';
+import { invalidateUserRecommendationCache } from '../services/recommendation.service.js';
 
 // Max file size limit: 10 MB
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -96,6 +97,9 @@ export async function uploadResume(req: AuthenticatedRequest, res: Response, nex
       { new: true, upsert: true, runValidators: true }
     ).lean();
 
+    // Invalidate recommendation cache so candidate immediately gets fresh recommendations
+    invalidateUserRecommendationCache(userId.toString());
+
     res.status(200).json({
       success: true,
       message: 'Resume uploaded and parsed successfully',
@@ -180,6 +184,9 @@ export async function deleteResume(req: AuthenticatedRequest, res: Response, nex
       });
       return;
     }
+
+    // Invalidate recommendation cache
+    invalidateUserRecommendationCache(userId.toString());
 
     res.status(200).json({
       success: true,

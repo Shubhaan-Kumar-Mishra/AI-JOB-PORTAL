@@ -9,6 +9,7 @@ import {
   sendApplicationConfirmationEmail,
   sendApplicationStatusEmail,
 } from '../services/email.service.js';
+import { invalidateUserRecommendationCache } from '../services/recommendation.service.js';
 import { ZodError } from 'zod';
 
 /**
@@ -87,6 +88,9 @@ export async function createApplication(req: AuthenticatedRequest, res: Response
       notes: notes || '',
       appliedAt: new Date(),
     });
+
+    // Invalidate recommendation cache so applied job is immediately excluded from future recommendation views
+    invalidateUserRecommendationCache(userId.toString());
 
     // ── SECONDARY OPERATION: Send confirmation email (fire-and-forget safe) ────
     // Email failure MUST NOT affect the already-saved application response.

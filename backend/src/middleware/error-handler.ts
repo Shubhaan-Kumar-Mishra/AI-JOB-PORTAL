@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { config } from '../config/env.js';
 
 /**
- * Centralized Error Handling Middleware for Express
+ * Centralized Error Handling Middleware for Express.
+ * Strictly prevents stack traces, internal paths, or credentials from leaking in API responses.
  */
 export function errorHandler(
   err: any,
@@ -23,14 +23,13 @@ export function errorHandler(
     return;
   }
 
-  const status = typeof err.status === 'number' ? err.status : 500;
-  const message = err.message || 'Internal Server Error';
+  const status = typeof err.status === 'number' ? err.status : typeof err.statusCode === 'number' ? err.statusCode : 500;
+  const message = status === 500 ? 'An unexpected server error occurred. Please try again.' : (err.message || 'Internal Server Error');
 
   res.status(status).json({
     success: false,
     error: {
       message,
-      ...(config.nodeEnv === 'development' ? { stack: err.stack } : {}),
     },
   });
 }

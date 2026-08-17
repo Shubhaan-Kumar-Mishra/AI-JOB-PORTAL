@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../middleware/authMiddleware.js';
 import { SavedJob } from '../models/SavedJob.js';
 import { fetchAdzunaJobs } from '../services/adzuna.service.js';
+import { invalidateUserRecommendationCache } from '../services/recommendation.service.js';
 
 /**
  * POST /api/jobs/:id/save
@@ -76,6 +77,9 @@ export async function saveJob(req: AuthenticatedRequest, res: Response, next: Ne
       savedAt: new Date(),
     });
 
+    // Invalidate recommendation cache so saved preferences update recommendations
+    invalidateUserRecommendationCache(userId.toString());
+
     res.status(201).json({
       success: true,
       message: 'Job saved successfully',
@@ -116,6 +120,9 @@ export async function removeSavedJob(req: AuthenticatedRequest, res: Response, n
       });
       return;
     }
+
+    // Invalidate recommendation cache
+    invalidateUserRecommendationCache(userId.toString());
 
     res.status(200).json({
       success: true,
